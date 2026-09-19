@@ -39,9 +39,27 @@ app.use(passport.initialize());
 
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 
-// ─── Health Check ──────────────────────────────────────────────────────────
+// ─── Health Check & Root Route ─────────────────────────────────────────────
+// Handles Render platform health probes and direct browser requests to /
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    name: 'Ping API',
+    version: '1.0.0',
+    status: 'running',
+    docs: '/api/docs',
+    health: '/api/health',
+  });
+});
+
 app.get('/api/health', (req, res) =>
-  res.status(200).json({ success: true, message: 'Server is running' })
+  res.status(200).json({
+    success: true,
+    status: 'ok',
+    message: 'Server is running',
+    environment: process.env.NODE_ENV,
+    timestamp: new Date().toISOString(),
+  })
 );
 
 // ─── Swagger Docs ──────────────────────────────────────────────────────────
