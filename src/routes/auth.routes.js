@@ -7,6 +7,7 @@ import {
   refreshAccessToken,
   logout,
   getMe,
+  verifyFirebaseToken,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import {
@@ -180,5 +181,43 @@ router.post('/logout', protect, logout);
  *         description: Unauthorized
  */
 router.get('/me', protect, getMe);
+
+/**
+ * @swagger
+ * /auth/verify:
+ *   post:
+ *     summary: Verify Firebase ID token from native Google Sign-In (React Native)
+ *     tags: [Auth]
+ *     description: >
+ *       Called by the mobile app after the user completes native Google Sign-In
+ *       via @react-native-google-signin/google-signin + Firebase Auth.
+ *       Verifies the Firebase ID token, finds-or-creates the user, and returns JWT tokens.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [firebaseIdToken]
+ *             properties:
+ *               firebaseIdToken:
+ *                 type: string
+ *                 description: Firebase ID token from userCredential.user.getIdToken()
+ *               deviceId:
+ *                 type: string
+ *                 description: Stable device identifier for analytics/session tracking
+ *     responses:
+ *       200:
+ *         description: Authentication successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Missing or invalid token
+ *       401:
+ *         description: Token verification failed (expired, wrong project, tampered)
+ */
+router.post('/verify', verifyFirebaseToken);
 
 export default router;

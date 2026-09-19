@@ -5,6 +5,7 @@ import {
   generateRefreshToken,
   verifyRefreshToken,
 } from '../utils/jwt.utils.js';
+import { verifyFirebaseIdToken } from '../utils/firebase.utils.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const sendTokens = async (res, user, statusCode = 200, extra = {}) => {
@@ -171,6 +172,86 @@ export const getMe = async (req, res, next) => {
     const user = await userRepository.findById(req.user.id, { withPhotos: true });
     res.status(200).json({ success: true, data: { user } });
   } catch (error) {
+    next(error);
+  }
+};
+
+// ─── Verify Firebase ID Token (Native Google Sign-In via React Native) ────────
+// POST /api/auth/verify
+// Body: { firebaseIdToken: string, deviceId: string }
+// Response: { success: true, data: { accessToken, refreshToken, user, isNewUser } }
+export const verifyFirebaseToken = async (req, res, next) => {
+  try {
+    const { firebaseIdToken, deviceId } = req.body;
+
+    console.log(`[auth/verify] Request received — deviceId: ${deviceId || 'none'}`);
+
+    if (!firebaseIdToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'firebaseIdToken is required',
+      });
+    }
+
+    // 1. Verify the Firebase ID token with Google's public keys
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(firebaseIdToken);
+    } catch (verifyError) {
+      console.error('[auth/verify] Token verification failed:', verifyError.message);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired Firebase ID token',
+        detail: verifyError.message,
+      });
+    }
+
+    const { uid: googleId, email, name, picture: googleAvatar, emailVerified } = decoded;
+    console.log(`[auth/verify] Token verified — uid: ${googleId}, email: ${email}`);
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'No email address found in Firebase token. Google account must have an email.',
+      });
+    }
+
+    // 2. Find or create user — mirrors the Passport GoogleStrategy logic exactly
+    let user = await userRepository.findByGoogleId(googleId);
+    let isNewUser = false;
+
+    if (!user) {
+      // Check if an account with this email already exists (email/password signup)
+      const existingByEmail = await userRepository.findByEmail(email, { withSensitive: true });
+
+      if (existingByEmail) {
+        // Link Google ID to the existing account
+        user = await userRepository.update(existingByEmail.id, {
+          googleId,
+          googleAvatar: existingByEmail.googleAvatar || googleAvatar,
+          isEmailVerified: true,
+        });
+        console.log(`[auth/verify] Linked Google ID to existing account: ${existingByEmail.id}`);
+      } else {
+        // Brand new user — create account
+        user = await userRepository.create({
+          googleId,
+          email,
+          name: name || email.split('@')[0],
+          googleAvatar,
+          isEmailVerified: emailVerified,
+        });
+        isNewUser = true;
+        console.log(`[auth/verify] New user created: ${user.id}`);
+      }
+    } else {
+      console.log(`[auth/verify] Existing user found: ${user.id}`);
+    }
+
+    // 3. Issue JWT tokens
+    await sendTokens(res, user, 200, { isNewUser, onboardingCompleted: user.onboardingCompleted });
+  } catch (error) {
+    console.error('[auth/verify] Unexpected error:', error);
     next(error);
   }
 };
