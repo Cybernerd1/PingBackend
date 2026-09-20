@@ -29,30 +29,58 @@ const client = new OAuth2Client();
 let _certCache = null;
 let _certCacheExpiry = 0;
 
-async function getFirebaseCerts() {
-  const now = Date.now();
-  if (_certCache && now < _certCacheExpiry) {
-    return _certCache;
-  }
+// async function getFirebaseCerts() {
+//   const now = Date.now();
+//   if (_certCache && now < _certCacheExpiry) {
+//     return _certCache;
+//   }
 
-  console.log('[firebase.utils] Fetching Firebase public key certs from Google...');
+//   console.log('[firebase.utils] Fetching Firebase public key certs from Google...');
+//   const res = await fetch(CERTS_URL);
+//   if (!res.ok) {
+//     throw new Error(`Failed to fetch Firebase certs: HTTP ${res.status}`);
+//   }
+
+//   const certs = await res.json();
+
+//   // Cache for 1 hour
+//   _certCache = certs;
+//   _certCacheExpiry = now + 60 * 60 * 1000;
+//   console.log('[firebase.utils] Firebase certs cached. Keys:', Object.keys(certs));
+
+//   return certs;
+// }
+
+// ── Verifier ──────────────────────────────────────────────────────────────────
+
+
+async function getFirebaseCerts() {
+  console.log('[firebase.utils] Fetching Firebase certs...');
+
   const res = await fetch(CERTS_URL);
+
+  console.log('[firebase.utils] HTTP status:', res.status);
+  console.log('[firebase.utils] Content-Type:', res.headers.get('content-type'));
+
   if (!res.ok) {
     throw new Error(`Failed to fetch Firebase certs: HTTP ${res.status}`);
   }
 
   const certs = await res.json();
 
-  // Cache for 1 hour
-  _certCache = certs;
-  _certCacheExpiry = now + 60 * 60 * 1000;
-  console.log('[firebase.utils] Firebase certs cached. Keys:', Object.keys(certs));
+  console.log('[firebase.utils] certs type:', typeof certs);
+  console.log('[firebase.utils] certs is null:', certs === null);
+  console.log(
+    '[firebase.utils] cert keys:',
+    certs ? Object.keys(certs) : 'NULL/UNDEFINED'
+  );
+
+  if (!certs || typeof certs !== 'object') {
+    throw new Error('Google Firebase cert response is empty or invalid');
+  }
 
   return certs;
 }
-
-// ── Verifier ──────────────────────────────────────────────────────────────────
-
 /**
  * Verifies a Firebase ID token and returns the decoded payload.
  * Throws if the token is invalid, expired, or from the wrong project.

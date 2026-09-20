@@ -8,6 +8,7 @@ import {
   logout,
   getMe,
   verifyFirebaseToken,
+  setPassword,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
 import {
@@ -181,6 +182,35 @@ router.post('/logout', protect, logout);
  *         description: Unauthorized
  */
 router.get('/me', protect, getMe);
+
+/**
+ * @swagger
+ * /auth/set-password:
+ *   post:
+ *     summary: Set a backup password (for Google sign-in users)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [password]
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password set successfully
+ *       400:
+ *         description: Password too short
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/set-password', protect, setPassword);
 
 /**
  * @swagger

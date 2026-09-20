@@ -176,6 +176,36 @@ export const getMe = async (req, res, next) => {
   }
 };
 
+// ─── Set Password (backup password for Google sign-in users) ──────────────────
+// POST /api/auth/set-password
+// Body: { password: string }   (min 8 chars)
+// Requires: valid Bearer token (protect middleware)
+export const setPassword = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+
+    if (!password || password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters',
+      });
+    }
+
+    // Hash and store — userRepository.update handles bcrypt if 'password' field is passed
+    const bcrypt = (await import('bcryptjs')).default;
+    const hashedPassword = await bcrypt.hash(password, 12);
+
+    await userRepository.update(req.user.id, { password: hashedPassword });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password set successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ─── Verify Firebase ID Token (Native Google Sign-In via React Native) ────────
 // POST /api/auth/verify
 // Body: { firebaseIdToken: string, deviceId: string }
