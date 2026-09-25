@@ -90,6 +90,7 @@ export const login = async (req, res, next) => {
 export const googleCallback = async (req, res) => {
   try {
     const result = req.user;
+    console.log("result",result);
 
     if (result.error) {
       const params = new URLSearchParams({

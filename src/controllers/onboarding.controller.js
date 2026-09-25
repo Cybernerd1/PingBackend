@@ -6,12 +6,15 @@ import { cloudinary } from '../config/cloudinary.js';
 // ─── Step 1: Save Profile ─────────────────────────────────────────────
 export const saveProfile = async (req, res, next) => {
   try {
+    console.log('[saveProfile] ── REQUEST ───────────────────────────────');
+    console.log('[saveProfile] userId:', req.user?.id);
+    console.log('[saveProfile] body:', JSON.stringify(req.body, null, 2));
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-      });
+      const errs = errors.array().map((e) => ({ field: e.path, message: e.msg }));
+      console.warn('[saveProfile] Validation failed:', JSON.stringify(errs));
+      return res.status(400).json({ success: false, errors: errs });
     }
 
     const { name, username, dateOfBirth, gender, interestedIn, about } = req.body;
@@ -19,12 +22,14 @@ export const saveProfile = async (req, res, next) => {
     // Check username availability
     const taken = await userRepository.findByUsername(username, req.user.id);
     if (taken) {
+      console.warn('[saveProfile] Username taken:', username);
       return res.status(409).json({
         success: false,
         message: 'Username is already taken',
       });
     }
 
+    // Save profile → advance onboarding step to 'photos'
     const user = await userRepository.update(req.user.id, {
       name,
       username: username.toLowerCase(),
@@ -33,7 +38,16 @@ export const saveProfile = async (req, res, next) => {
       interestedIn: Array.isArray(interestedIn) ? interestedIn : [interestedIn],
       about,
       onboardingStep: 'photos',
+      // Keep onboardingCompleted: false until photos are uploaded
     });
+
+    console.log('[saveProfile] ── SUCCESS ───────────────────────────────');
+    console.log('[saveProfile] updated user:', JSON.stringify({
+      id: user?.id,
+      username: user?.username,
+      onboardingCompleted: user?.onboardingCompleted,
+      onboardingStep: user?.onboardingStep,
+    }, null, 2));
 
     res.status(200).json({
       success: true,
@@ -41,6 +55,7 @@ export const saveProfile = async (req, res, next) => {
       data: { user },
     });
   } catch (error) {
+    console.error('[saveProfile] ERROR:', error.message);
     next(error);
   }
 };
@@ -69,12 +84,24 @@ export const checkUsername = async (req, res, next) => {
 };
 
 // ─── Step 2: Upload Photos ────────────────────────────────────────────
+/**
+ * Accepts 1–4 files via multipart/form-data field "photos".
+ * photos[0] is treated as the profile/avatar photo.
+ * Marks onboarding complete after successful upload.
+ */
 export const uploadPhotos = async (req, res, next) => {
   try {
-    if (!req.files || req.files.length < 3) {
+    if (!req.files || req.files.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please upload at least 3 photos',
+        message: 'Please upload at least 1 photo.',
+      });
+    }
+
+    if (req.files.length > 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'You can upload at most 4 photos (1 profile + 3 additional).',
       });
     }
 
@@ -104,7 +131,6 @@ export const uploadPhotos = async (req, res, next) => {
 export const reorderPhotos = async (req, res, next) => {
   try {
     const { photoOrders } = req.body;
-    // photoOrders: [{ id: 'uuid', order: 0 }, ...]
 
     if (!Array.isArray(photoOrders)) {
       return res.status(400).json({ success: false, message: 'Invalid data' });
@@ -130,14 +156,6 @@ export const deletePhoto = async (req, res, next) => {
   try {
     const { publicId } = req.params;
 
-    const photoCount = await photoRepository.countByUserId(req.user.id);
-    if (photoCount <= 3) {
-      return res.status(400).json({
-        success: false,
-        message: 'You must have at least 3 photos',
-      });
-    }
-
     const photo = await photoRepository.findByPublicId(publicId, req.user.id);
     if (!photo) {
       return res.status(404).json({ success: false, message: 'Photo not found' });
@@ -146,10 +164,8 @@ export const deletePhoto = async (req, res, next) => {
     // Delete from Cloudinary
     await cloudinary.uploader.destroy(publicId);
 
-    // Delete from DB
+    // Delete from DB and re-index
     await photoRepository.deleteByPublicId(publicId, req.user.id);
-
-    // Re-index remaining photos
     await photoRepository.reindexOrders(req.user.id);
 
     const updatedPhotos = await photoRepository.findByUserId(req.user.id);

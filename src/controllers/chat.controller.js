@@ -53,7 +53,7 @@ export const getMessages = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const msgs = await messageRepository.findByConversationId(conversationId, {
+    const msgs = await messageRepository.findByConversationIdCursor(conversationId, {
       limit: Math.min(Number(limit), 100),
       cursor,
     });

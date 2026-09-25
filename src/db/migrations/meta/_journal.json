@@ -15,6 +15,20 @@
       "when": 1789823531332,
       "tag": "0001_massive_satana",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790319949349,
+      "tag": "0002_steep_bill_hollister",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790320628256,
+      "tag": "0003_fine_odin",
+      "breakpoints": true
     }
   ]
 }
