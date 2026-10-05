@@ -5,8 +5,8 @@
  * POST /api/v1/users/location/stop  → stopLocationSharing
  */
 
-import { userRepository } from '../../db/repositories/user.repository.js';
-import * as R from '../../utils/response.js';
+import { userRepository } from '../db/repositories/user.repository.js';
+import * as R from '../utils/response.js';
 
 // ── POST /api/v1/users/location/start ────────────────────────────────
 export const startLocationSharing = async (req, res, next) => {

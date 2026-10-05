@@ -17,16 +17,18 @@
  *  - limit  (default 20, max 50)
  */
 
-import { db } from '../../config/database.js';
-import { users } from '../../db/schema/users.js';
-import { photos } from '../../db/schema/photos.js';
-import { preferences } from '../../db/schema/preferences.js';
-import { userInterests } from '../../db/schema/interests.js';
-import { interests as interestsTable } from '../../db/schema/interests.js';
-import { swipeRepository } from '../../db/repositories/swipe.repository.js';
-import { matchRepository } from '../../db/repositories/match.repository.js';
+import { db } from '../config/database.js';
+import { users } from '../db/schema/users.js';
+import { photos } from '../db/schema/photos.js';
+import { preferences } from '../db/schema/preferences.js';
+import { userInterests } from '../db/schema/interests.js';
+import { interests as interestsTable } from '../db/schema/interests.js';
+import { swipeRepository } from '../db/repositories/swipe.repository.js';
+import { safetyRepository } from '../db/repositories/safety.repository.js';
+import { privacySettings } from '../db/schema/privacy.js';
+import { matchRepository } from '../db/repositories/match.repository.js';
 import { eq, ne, and, not, inArray, or } from 'drizzle-orm';
-import * as R from '../../utils/response.js';
+import * as R from '../utils/response.js';
 
 // ── Haversine distance (km) ──────────────────────────────────────────────
 const haversine = (lat1, lng1, lat2, lng2) => {
@@ -80,11 +82,26 @@ export const getDiscoverStack = async (req, res, next) => {
     }
 
     // 2. Build exclusion list
-    const [swipedIds, matchedIds] = await Promise.all([
+    const [swipedIds, matchedIds, blockedIds, blockedByIds, hiddenRows] = await Promise.all([
       swipeRepository.getSwipedIds(currentUserId),
       matchRepository.getMatchedUserIds(currentUserId),
+      safetyRepository.getBlockedIds(currentUserId),
+      safetyRepository.getBlockedByIds(currentUserId),
+      db
+        .select({ userId: privacySettings.userId })
+        .from(privacySettings)
+        .where(eq(privacySettings.profileVisibleInDiscover, false)),
     ]);
-    const excludeIds = [...new Set([currentUserId, ...swipedIds, ...matchedIds])];
+    const excludeIds = [
+      ...new Set([
+        currentUserId,
+        ...swipedIds,
+        ...matchedIds,
+        ...blockedIds,
+        ...blockedByIds,
+        ...hiddenRows.map((r) => r.userId),
+      ]),
+    ];
 
     // 3. Base DB conditions
     const baseConditions = [
@@ -173,6 +190,13 @@ export const getDiscoverStack = async (req, res, next) => {
 
     const candidateIds = filtered.map((c) => c.id);
 
+    // Per-candidate privacy (show_age / show_distance)
+    const privacyRows = await db
+      .select()
+      .from(privacySettings)
+      .where(inArray(privacySettings.userId, candidateIds));
+    const privacyByUser = Object.fromEntries(privacyRows.map((p) => [p.userId, p]));
+
     // 7. Fetch photos for each candidate (order 0 = profile picture)
     const allPhotos =
       candidateIds.length > 0
@@ -220,10 +244,13 @@ export const getDiscoverStack = async (req, res, next) => {
     const usersPayload = filtered.map((c) => ({
       user_id: c.id,
       full_name: c.fullName || c.username || 'Ping User',
-      age: c.age,
+      age: privacyByUser[c.id]?.showAge === false ? null : c.age,
+      gender: c.gender,
       bio: c.bio || null,
       distance_km:
-        c.distanceKm !== null ? Math.round(c.distanceKm * 10) / 10 : null,
+        privacyByUser[c.id]?.showDistance === false || c.distanceKm === null
+          ? null
+          : Math.round(c.distanceKm * 10) / 10,
       interests: interestsByUser[c.id] || [],
       photos: photosByUser[c.id]?.length
         ? photosByUser[c.id]

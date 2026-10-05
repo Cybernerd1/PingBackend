@@ -12,15 +12,15 @@
  *   }]
  */
 
-import { db } from '../../config/database.js';
-import { matches } from '../../db/schema/matches.js';
-import { conversations } from '../../db/schema/conversations.js';
-import { messages } from '../../db/schema/messages.js';
-import { users } from '../../db/schema/users.js';
-import { photos } from '../../db/schema/photos.js';
-import { matchRepository } from '../../db/repositories/match.repository.js';
+import { db } from '../config/database.js';
+import { matches } from '../db/schema/matches.js';
+import { conversations } from '../db/schema/conversations.js';
+import { messages } from '../db/schema/messages.js';
+import { users } from '../db/schema/users.js';
+import { photos } from '../db/schema/photos.js';
+import { matchRepository } from '../db/repositories/match.repository.js';
 import { eq, or, and, desc } from 'drizzle-orm';
-import * as R from '../../utils/response.js';
+import * as R from '../utils/response.js';
 
 // ── Age from birthdate ─────────────────────────────────────────────────
 const calcAge = (birthdate) => {

@@ -10,13 +10,13 @@
  * Response 201 (it's a match): { liked_user_id, is_match: true, like_id, match: {...}, chat: {...} }
  */
 
-import { db } from '../../config/database.js';
-import { swipeRepository } from '../../db/repositories/swipe.repository.js';
-import { matchRepository } from '../../db/repositories/match.repository.js';
-import { conversations } from '../../db/schema/conversations.js';
+import { db } from '../config/database.js';
+import { swipeRepository } from '../db/repositories/swipe.repository.js';
+import { matchRepository } from '../db/repositories/match.repository.js';
+import { conversations } from '../db/schema/conversations.js';
 import { eq, and, or } from 'drizzle-orm';
-import * as R from '../../utils/response.js';
-import { getIO } from '../../socket/index.js';
+import * as R from '../utils/response.js';
+import { getIO } from '../socket/index.js';
 
 // ── POST /api/v1/interactions ──────────────────────────────────────────
 export const recordInteraction = async (req, res, next) => {
@@ -113,7 +113,10 @@ export const recordInteraction = async (req, res, next) => {
       };
       // Emit to both — the emitToUser helper is in chat.socket so we use io directly
       [currentUserId, targetUserId].forEach((uid) => {
-        io.emit(`match_created:${uid}`, matchPayload); // per-user channel
+        io.to(`user:${uid}`).emit('match_created', {
+          ...matchPayload,
+          matched_user_id: uid === currentUserId ? targetUserId : currentUserId,
+        });
       });
     } catch {
       // Socket may not be initialized in tests — non-fatal

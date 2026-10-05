@@ -8,11 +8,11 @@
  * Requires OTP confirmation in the request body for safety.
  */
 
-import { userRepository } from '../../db/repositories/user.repository.js';
-import { db } from '../../config/database.js';
-import { users } from '../../db/schema/users.js';
+import { userRepository } from '../db/repositories/user.repository.js';
+import { db } from '../config/database.js';
+import { users } from '../db/schema/users.js';
 import { eq } from 'drizzle-orm';
-import * as R from '../../utils/response.js';
+import * as R from '../utils/response.js';
 
 // ── DELETE /api/v1/users/account ──────────────────────────────────────
 export const deleteAccount = async (req, res, next) => {

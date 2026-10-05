@@ -1,4 +1,18 @@
-import { validationResult } from 'express-validator';
+/**
+ * Auth controller — v1
+ *
+ * Implements the spec's OTP-based passwordless auth (EMAIL_OTP | SMS_OTP)
+ * plus Google/Apple OAuth token exchange.
+ *
+ * OTP flow (signup & login) is backed by Firebase Auth:
+ *  - signup  → createUserWithEmailAndPassword OR custom token → sendSignInLinkToEmail
+ *  - verify  → verifyIdToken (Firebase Admin)
+ *
+ * For the MVP the OTP session/challenge is managed on the client side via
+ * Firebase client SDK; the server only mints its own JWT pair after
+ * verifying the Firebase ID token the client returns post-OTP.
+ */
+
 import { userRepository } from '../db/repositories/user.repository.js';
 import {
   generateAccessToken,
@@ -6,283 +20,244 @@ import {
   verifyRefreshToken,
 } from '../utils/jwt.utils.js';
 import { verifyFirebaseIdToken } from '../utils/firebase.utils.js';
+import { verifyGoogleIdToken } from '../utils/google.utils.js';
+import * as R from '../utils/response.js';
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helper: issue tokens & send response ──────────────────────────────
 const sendTokens = async (res, user, statusCode = 200, extra = {}) => {
   const accessToken = generateAccessToken(user.id);
   const refreshToken = generateRefreshToken(user.id);
   await userRepository.updateRefreshToken(user.id, refreshToken);
 
-  res.status(statusCode).json({
-    success: true,
-    data: { accessToken, refreshToken, user, ...extra },
-  });
+  return R.success(
+    res,
+    {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: 3600,
+      ...extra,
+    },
+    'Authentication successful',
+    statusCode
+  );
 };
 
-// ─── Register ─────────────────────────────────────────────────────────────────
-export const register = async (req, res, next) => {
+// ── Signup: POST /api/v1/auth/signup ─────────────────────────────────
+export const signup = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-      });
-    }
+    const { username, preferred_challenge } = req.body;
 
-    const { name, email, password } = req.body;
+    if (!username) return R.validationError(res, 'username is required');
+    if (!['EMAIL_OTP', 'SMS_OTP'].includes(preferred_challenge))
+      return R.validationError(res, 'preferred_challenge must be EMAIL_OTP or SMS_OTP');
 
-    const existing = await userRepository.findByEmail(email);
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: 'An account with this email already exists',
-      });
-    }
+    const existing = await userRepository.findByEmail(username.toLowerCase());
+    if (existing) return R.conflict(res, `An account with ${username} already exists`);
 
-    const user = await userRepository.create({ name, email, password });
-    await sendTokens(res, user, 201);
-  } catch (error) {
-    next(error);
+    return R.success(res, {}, `OTP sent to ${username}`);
+  } catch (err) {
+    next(err);
   }
 };
 
-// ─── Login ────────────────────────────────────────────────────────────────────
+// ── Verify signup OTP: POST /api/v1/auth/verify-otp ──────────────────
+export const verifySignupOtp = async (req, res, next) => {
+  try {
+    const { username, session } = req.body;
+
+    if (!session) return R.validationError(res, 'session (Firebase ID token) is required');
+
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(session);
+    } catch {
+      return R.unauthorized(res, 'Invalid or expired OTP session');
+    }
+
+    const { uid: googleId, email, name, picture: googleAvatar, email_verified } = decoded;
+
+    let user = await userRepository.findByEmail((email || username).toLowerCase());
+    let profileExists = false;
+
+    if (!user) {
+      user = await userRepository.create({
+        googleId,
+        email: email || username,
+        fullName: name || null,
+        googleAvatar: googleAvatar || null,
+        isEmailVerified: email_verified || false,
+      });
+    } else {
+      profileExists = !!(user.birthdate && user.gender);
+      if (googleId && !user.googleId) {
+        user = await userRepository.update(user.id, { googleId, isEmailVerified: true });
+      }
+    }
+
+    return sendTokens(res, user, 200, { profile_exists: profileExists });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Resend signup OTP: POST /api/v1/auth/resend-otp ──────────────────
+export const resendSignupOtp = async (req, res, next) => {
+  try {
+    const { username } = req.body;
+    if (!username) return R.validationError(res, 'username is required');
+    return R.success(res, {}, 'OTP resent');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Login: POST /api/v1/auth/login ────────────────────────────────────
 export const login = async (req, res, next) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((e) => ({ field: e.path, message: e.msg })),
-      });
-    }
+    const { username, preferred_challenge } = req.body;
 
-    const { email, password } = req.body;
+    if (!username) return R.validationError(res, 'username is required');
+    if (!['EMAIL_OTP', 'SMS_OTP'].includes(preferred_challenge))
+      return R.validationError(res, 'preferred_challenge must be EMAIL_OTP or SMS_OTP');
 
-    // Fetch with sensitive fields so we can compare password
-    const user = await userRepository.findByEmail(email, { withSensitive: true });
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
+    const user = await userRepository.findByEmail(username.toLowerCase());
+    if (!user) return R.notFound(res, 'No account found with that email/phone');
 
-    if (!user.password) {
-      return res.status(401).json({
-        success: false,
-        message: 'This account uses Google sign-in. Please log in with Google.',
-      });
-    }
-
-    const isMatch = await userRepository.comparePassword(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Invalid email or password' });
-    }
-
-    // Strip sensitive fields before sending
-    const { password: _, refreshToken: __, ...safeUser } = user;
-    await sendTokens(res, safeUser);
-  } catch (error) {
-    next(error);
+    return R.success(res, {}, `OTP sent to ${username}`);
+  } catch (err) {
+    next(err);
   }
 };
 
-// ─── Google OAuth Callback ────────────────────────────────────────────────────
-export const googleCallback = async (req, res) => {
+// ── Verify login OTP: POST /api/v1/auth/login/verify-otp ─────────────
+export const verifyLoginOtp = async (req, res, next) => {
   try {
-    const result = req.user;
-    console.log("result",result);
+    const { username, session } = req.body;
 
-    if (result.error) {
-      const params = new URLSearchParams({
-        error: result.error,
-        message: result.message,
-      });
-      return res.redirect(`${process.env.MOBILE_DEEP_LINK}?${params}`);
-    }
-
-    const { user, isNewUser } = result;
-
-    const accessToken = generateAccessToken(user.id);
-    const refreshToken = generateRefreshToken(user.id);
-
-    await userRepository.updateRefreshToken(user.id, refreshToken);
-
-    const params = new URLSearchParams({
-      accessToken,
-      refreshToken,
-      isNewUser: String(isNewUser),
-      onboardingCompleted: String(user.onboardingCompleted),
-      onboardingStep: user.onboardingStep,
-    });
-
-    res.redirect(`${process.env.MOBILE_DEEP_LINK}?${params}`);
-  } catch (error) {
-    const params = new URLSearchParams({ error: 'server_error' });
-    res.redirect(`${process.env.MOBILE_DEEP_LINK}?${params}`);
-  }
-};
-
-// ─── Refresh Token ────────────────────────────────────────────────────────────
-export const refreshAccessToken = async (req, res, next) => {
-  try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      return res.status(401).json({ success: false, message: 'Refresh token required' });
-    }
+    if (!session) return R.validationError(res, 'session (Firebase ID token) is required');
 
     let decoded;
     try {
-      decoded = verifyRefreshToken(refreshToken);
+      decoded = await verifyFirebaseIdToken(session);
     } catch {
-      return res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
+      return R.unauthorized(res, 'Invalid or expired OTP');
     }
 
-    const storedToken = await userRepository.getRefreshToken(decoded.userId);
-    if (!storedToken || storedToken !== refreshToken) {
-      return res.status(401).json({ success: false, message: 'Invalid refresh token' });
-    }
+    const { email } = decoded;
 
-    const newAccessToken = generateAccessToken(decoded.userId);
-    const newRefreshToken = generateRefreshToken(decoded.userId);
+    const user = await userRepository.findByEmail((email || username).toLowerCase());
+    if (!user) return R.notFound(res, 'No account found');
 
-    await userRepository.updateRefreshToken(decoded.userId, newRefreshToken);
-
-    res.status(200).json({
-      success: true,
-      data: { accessToken: newAccessToken, refreshToken: newRefreshToken },
-    });
-  } catch (error) {
-    next(error);
+    return sendTokens(res, user, 200);
+  } catch (err) {
+    next(err);
   }
 };
 
-// ─── Logout ───────────────────────────────────────────────────────────────────
-export const logout = async (req, res, next) => {
+// ── Resend login OTP: POST /api/v1/auth/login/resend-otp ─────────────
+export const resendLoginOtp = async (req, res, next) => {
   try {
-    await userRepository.updateRefreshToken(req.user.id, null);
-    res.status(200).json({ success: true, message: 'Logged out successfully' });
-  } catch (error) {
-    next(error);
+    const { username } = req.body;
+    if (!username) return R.validationError(res, 'username is required');
+    return R.success(res, {}, 'OTP resent');
+  } catch (err) {
+    next(err);
   }
 };
 
-// ─── Get Me ───────────────────────────────────────────────────────────────────
-export const getMe = async (req, res, next) => {
+// ── Google OAuth: POST /api/v1/auth/google/callback ──────────────────
+export const googleCallback = async (req, res, next) => {
   try {
-    const user = await userRepository.findById(req.user.id, { withPhotos: true });
-    res.status(200).json({ success: true, data: { user } });
-  } catch (error) {
-    next(error);
-  }
-};
+    const { id_token } = req.body;
 
-// ─── Set Password (backup password for Google sign-in users) ──────────────────
-// POST /api/auth/set-password
-// Body: { password: string }   (min 8 chars)
-// Requires: valid Bearer token (protect middleware)
-export const setPassword = async (req, res, next) => {
-  try {
-    const { password } = req.body;
+    if (!id_token) return R.validationError(res, 'id_token is required');
 
-    if (!password || password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 8 characters',
-      });
-    }
-
-    // Hash and store — userRepository.update handles bcrypt if 'password' field is passed
-    const bcrypt = (await import('bcryptjs')).default;
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    await userRepository.update(req.user.id, { password: hashedPassword });
-
-    res.status(200).json({
-      success: true,
-      message: 'Password set successfully',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ─── Verify Firebase ID Token (Native Google Sign-In via React Native) ────────
-// POST /api/auth/verify
-// Body: { firebaseIdToken: string, deviceId: string }
-// Response: { success: true, data: { accessToken, refreshToken, user, isNewUser } }
-export const verifyFirebaseToken = async (req, res, next) => {
-  try {
-    const { firebaseIdToken, deviceId } = req.body;
-
-    console.log(`[auth/verify] Request received — deviceId: ${deviceId || 'none'}`);
-
-    if (!firebaseIdToken) {
-      return res.status(400).json({
-        success: false,
-        message: 'firebaseIdToken is required',
-      });
-    }
-
-    // 1. Verify the Firebase ID token with Google's public keys
-    let decoded;
+    let payload;
     try {
-      decoded = await verifyFirebaseIdToken(firebaseIdToken);
-    } catch (verifyError) {
-      console.error('[auth/verify] Token verification failed:', verifyError.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired Firebase ID token',
-        detail: verifyError.message,
-      });
+      payload = await verifyGoogleIdToken(id_token);
+    } catch {
+      return R.unauthorized(res, 'Invalid Google ID token');
     }
 
-    const { uid: googleId, email, name, picture: googleAvatar, emailVerified } = decoded;
-    console.log(`[auth/verify] Token verified — uid: ${googleId}, email: ${email}`);
+    const { sub: googleId, email, name, picture: googleAvatar, email_verified } = payload;
 
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'No email address found in Firebase token. Google account must have an email.',
-      });
-    }
-
-    // 2. Find or create user — mirrors the Passport GoogleStrategy logic exactly
     let user = await userRepository.findByGoogleId(googleId);
+    let profileExists = false;
     let isNewUser = false;
 
     if (!user) {
-      // Check if an account with this email already exists (email/password signup)
-      const existingByEmail = await userRepository.findByEmail(email, { withSensitive: true });
-
-      if (existingByEmail) {
-        // Link Google ID to the existing account
-        user = await userRepository.update(existingByEmail.id, {
-          googleId,
-          googleAvatar: existingByEmail.googleAvatar || googleAvatar,
-          isEmailVerified: true,
-        });
-        console.log(`[auth/verify] Linked Google ID to existing account: ${existingByEmail.id}`);
+      const byEmail = await userRepository.findByEmail(email.toLowerCase(), { withSensitive: true });
+      if (byEmail) {
+        user = await userRepository.update(byEmail.id, { googleId, googleAvatar, isEmailVerified: true });
       } else {
-        // Brand new user — create account
-        user = await userRepository.create({
-          googleId,
-          email,
-          name: name || email.split('@')[0],
-          googleAvatar,
-          isEmailVerified: emailVerified,
-        });
+        user = await userRepository.create({ googleId, email, fullName: name, googleAvatar, isEmailVerified: email_verified });
         isNewUser = true;
-        console.log(`[auth/verify] New user created: ${user.id}`);
       }
-    } else {
-      console.log(`[auth/verify] Existing user found: ${user.id}`);
     }
 
-    // 3. Issue JWT tokens
-    await sendTokens(res, user, 200, { isNewUser, onboardingCompleted: user.onboardingCompleted });
-  } catch (error) {
-    console.error('[auth/verify] Unexpected error:', error);
-    next(error);
+    if (user.isAccountDeleted) return R.unauthorized(res, 'This account has been deleted');
+    if (user.isDeleted) {
+      // Signing in again restores a soft-deleted dating profile.
+      user = await userRepository.update(user.id, { isDeleted: false });
+    }
+    profileExists = !isNewUser && !!(user.birthdate && user.gender);
+
+    return sendTokens(res, user, 200, { profile_exists: profileExists });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Apple OAuth: POST /api/v1/auth/apple/callback ────────────────────
+export const appleCallback = async (req, res, next) => {
+  try {
+    const { identity_token } = req.body;
+    if (!identity_token) return R.validationError(res, 'identity_token is required');
+
+    // TODO: Implement Apple JWT verification (Phase 5)
+    return R.error(res, 501, 'NOT_IMPLEMENTED', 'Apple Sign-In is not yet implemented');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Refresh token: POST /api/v1/auth/refresh-token ───────────────────
+export const refreshToken = async (req, res, next) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) return R.unauthorized(res, 'refresh_token is required');
+
+    let decoded;
+    try {
+      decoded = verifyRefreshToken(refresh_token);
+    } catch {
+      return R.unauthorized(res, 'Invalid or expired refresh token');
+    }
+
+    const stored = await userRepository.getRefreshToken(decoded.userId);
+    if (!stored || stored !== refresh_token)
+      return R.unauthorized(res, 'Refresh token is invalid or has been rotated');
+
+    const newAccessToken = generateAccessToken(decoded.userId);
+    const newRefreshToken = generateRefreshToken(decoded.userId);
+    await userRepository.updateRefreshToken(decoded.userId, newRefreshToken);
+
+    return R.success(
+      res,
+      { access_token: newAccessToken, refresh_token: newRefreshToken, expires_in: 3600 },
+      'Token refreshed'
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Logout: POST /api/v1/auth/logout ─────────────────────────────────
+export const logout = async (req, res, next) => {
+  try {
+    await userRepository.updateRefreshToken(req.user.id, null);
+    return R.success(res, {}, 'Logged out successfully');
+  } catch (err) {
+    next(err);
   }
 };

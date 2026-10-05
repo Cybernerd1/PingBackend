@@ -7,9 +7,10 @@
  * PUT    /api/v1/users/photos/profile-picture  → setProfilePicture
  */
 
-import { photoRepository } from '../../db/repositories/photo.repository.js';
-import { cloudinary } from '../../config/cloudinary.js';
-import * as R from '../../utils/response.js';
+import { photoRepository } from '../db/repositories/photo.repository.js';
+import { cloudinary } from '../config/cloudinary.js';
+import * as R from '../utils/response.js';
+import { syncOnboardingStatus } from '../utils/onboarding.js';
 
 const MAX_PHOTOS = 6;
 
@@ -55,6 +56,7 @@ export const uploadPhotos = async (req, res, next) => {
     }));
 
     const saved = await photoRepository.insertMany(req.user.id, photoData);
+    await syncOnboardingStatus(req.user.id);
 
     return R.success(
       res,
@@ -77,11 +79,13 @@ export const deletePhoto = async (req, res, next) => {
 
     // Delete from Cloudinary
     if (photo.publicId) {
-      await cloudinary.uploader.destroy(photo.publicId);
+      // Don't block the delete if Cloudinary is unreachable
+      await cloudinary.uploader.destroy(photo.publicId).catch(() => null);
     }
 
     await photoRepository.deleteById(photo_id, req.user.id);
     await photoRepository.reindexOrders(req.user.id);
+    await syncOnboardingStatus(req.user.id);
 
     return R.success(res, { deleted: true }, 'Photo deleted');
   } catch (err) {

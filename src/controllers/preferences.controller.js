@@ -6,8 +6,9 @@
  * PUT  /api/v1/users/preferences → updatePreferences
  */
 
-import { preferencesRepository } from '../../db/repositories/preferences.repository.js';
-import * as R from '../../utils/response.js';
+import { preferencesRepository } from '../db/repositories/preferences.repository.js';
+import * as R from '../utils/response.js';
+import { syncOnboardingStatus } from '../utils/onboarding.js';
 
 const VALID_GENDERS = ['male', 'female', 'non-binary', 'everyone'];
 
@@ -39,7 +40,19 @@ export const savePreferences = async (req, res, next) => {
       maxDistanceKm: max_distance_km ?? 50,
     });
 
-    return R.success(res, { preferences: prefs }, 'Preferences saved');
+    await syncOnboardingStatus(req.user.id);
+    return R.success(
+      res,
+      {
+        preferences: {
+          interested_in: prefs.interestedIn,
+          min_age: prefs.minAge,
+          max_age: prefs.maxAge,
+          max_distance_km: prefs.maxDistanceKm,
+        },
+      },
+      'Preferences saved'
+    );
   } catch (err) {
     next(err);
   }
@@ -102,22 +115,24 @@ export const updatePreferences = async (req, res, next) => {
 
     // Upsert — create if not exists
     let prefs = await preferencesRepository.findByUserId(req.user.id);
+    const nextMin = updateData.minAge ?? prefs?.minAge ?? 18;
+    const nextMax = updateData.maxAge ?? prefs?.maxAge ?? 45;
+    if (nextMin > nextMax) return R.validationError(res, 'min_age must not exceed max_age');
     if (!prefs) {
       prefs = await preferencesRepository.create({ userId: req.user.id, ...updateData });
     } else {
       prefs = await preferencesRepository.update(req.user.id, updateData);
     }
 
-    return R.success(
-      res,
-      {
-        interested_in: prefs.interestedIn,
-        min_age: prefs.minAge,
-        max_age: prefs.maxAge,
-        max_distance_km: prefs.maxDistanceKm,
-      },
-      'Preferences updated'
-    );
+    await syncOnboardingStatus(req.user.id);
+    const shaped = {
+      interested_in: prefs.interestedIn,
+      min_age: prefs.minAge,
+      max_age: prefs.maxAge,
+      max_distance_km: prefs.maxDistanceKm,
+    };
+    // Spec says PUT returns { preferences }, older clients read the flat shape — send both.
+    return R.success(res, { ...shaped, preferences: shaped }, 'Preferences updated');
   } catch (err) {
     next(err);
   }

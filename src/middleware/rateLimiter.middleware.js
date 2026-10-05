@@ -30,14 +30,19 @@ const makeRateLimiter = (windowMs, max, message = rateLimitError) =>
     handler: (req, res, next, options) => {
       res.status(options.statusCode).json(options.message);
     },
-    // Key by IP; in production behind a proxy, trust X-Forwarded-For:
-    keyGenerator: (req) => req.ip || req.headers['x-forwarded-for'] || 'unknown',
+    // Default key generator (IPv6-safe). app.js sets `trust proxy` so req.ip is the client.
   });
 
 // 10 requests per 15 minutes — OTP endpoints (signup, login, resend)
 export const authRateLimiter = makeRateLimiter(15 * 60 * 1000, 10, {
   ...rateLimitError,
   message: 'Too many auth attempts — please wait 15 minutes before trying again',
+});
+
+// 60 requests per 15 minutes — Google/Apple exchange, refresh-token, logout
+export const tokenRateLimiter = makeRateLimiter(15 * 60 * 1000, 60, {
+  ...rateLimitError,
+  message: 'Too many sign-in attempts — please wait a few minutes and try again',
 });
 
 // 30 requests per minute — discover stack

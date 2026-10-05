@@ -1,13 +1,13 @@
 import { Router } from 'express';
-import { protect } from '../../middleware/auth.middleware.js';
+import { protect } from '../middleware/auth.middleware.js';
 import {
   reportUser,
   blockUser,
   unblockUser,
   getBlockedUsers,
-} from '../../controllers/v1/safety.controller.js';
-import { validate } from '../../middleware/validate.middleware.js';
-import { reportUserSchema } from '../../utils/validators/schemas.js';
+} from '../controllers/safety.controller.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { reportUserSchema } from '../utils/validators/schemas.js';
 
 const router = Router();
 

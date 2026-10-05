@@ -7,9 +7,9 @@
  * GET    /api/v1/users/blocked          → getBlockedUsers
  */
 
-import { safetyRepository } from '../../db/repositories/safety.repository.js';
-import { userRepository } from '../../db/repositories/user.repository.js';
-import * as R from '../../utils/response.js';
+import { safetyRepository } from '../db/repositories/safety.repository.js';
+import { userRepository } from '../db/repositories/user.repository.js';
+import * as R from '../utils/response.js';
 
 const VALID_REASONS = [
   'spam',
@@ -116,7 +116,8 @@ export const getBlockedUsers = async (req, res, next) => {
       blocked_at: r.blockedAt,
     }));
 
-    return R.success(res, { blocked }, 'Blocked users fetched');
+    // `users` is the documented key; `blocked` kept for older clients.
+    return R.success(res, { users: blocked, blocked }, 'Blocked users fetched');
   } catch (error) {
     next(error);
   }

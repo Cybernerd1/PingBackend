@@ -3,7 +3,7 @@
  *
  * Usage:
  *   import { validate } from '../middleware/validate.middleware.js';
- *   import { loginSchema } from '../utils/validators/auth.validators.js';
+ *   import { loginSchema } from '../utils/validators/schemas.js';
  *
  *   router.post('/login', validate(loginSchema), loginController);
  *

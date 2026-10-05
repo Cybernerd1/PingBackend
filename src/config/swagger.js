@@ -168,7 +168,6 @@ Connect to \`ws://localhost:5000\` with:
     },
   },
   apis: [
-    './src/routes/v1/*.js',
     './src/routes/*.js',
     './src/middleware/validators/*.js',
   ],

@@ -98,6 +98,8 @@ export const initChatSocket = (io) => {
   io.on('connection', (socket) => {
     const userId = socket.user.id;
     addOnline(userId, socket.id);
+    // Personal room — used for match_created and other user-targeted events.
+    socket.join(`user:${userId}`);
 
     // Broadcast online presence to everyone
     socket.broadcast.emit('presence_update', {

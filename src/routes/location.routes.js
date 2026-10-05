@@ -2,8 +2,8 @@ import { Router } from 'express';
 import {
   startLocationSharing,
   stopLocationSharing,
-} from '../../controllers/v1/location.controller.js';
-import { protect } from '../../middleware/auth.middleware.js';
+} from '../controllers/location.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
 
 const router = Router();
 

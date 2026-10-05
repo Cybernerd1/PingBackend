@@ -6,8 +6,8 @@
  * PUT  /api/v1/users/privacy/settings → updatePrivacySettings
  */
 
-import { privacyRepository } from '../../db/repositories/privacy.repository.js';
-import * as R from '../../utils/response.js';
+import { privacyRepository } from '../db/repositories/privacy.repository.js';
+import * as R from '../utils/response.js';
 
 const toResponse = (row) => ({
   show_distance: row.showDistance,

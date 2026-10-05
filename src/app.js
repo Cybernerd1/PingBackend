@@ -2,51 +2,44 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import cookieParser from 'cookie-parser';
-import rateLimit from 'express-rate-limit';
 import swaggerUi from 'swagger-ui-express';
-import passport from './config/passport.js';
 import { swaggerSpec } from './config/swagger.js';
 import { requestId } from './middleware/requestId.middleware.js';
 import {
   authRateLimiter,
+  tokenRateLimiter,
+  globalRateLimiter,
   discoverRateLimiter,
   interactionRateLimiter,
   uploadRateLimiter,
   reportRateLimiter,
 } from './middleware/rateLimiter.middleware.js';
 
-// ── Phase 1 routes ─────────────────────────────────────────────────────
-import v1AuthRoutes from './routes/v1/auth.routes.js';
-import v1ProfileRoutes from './routes/v1/profile.routes.js';
-import { interestsCatalogueRouter, userInterestsRouter } from './routes/v1/interests.routes.js';
-import v1PhotosRoutes from './routes/v1/photos.routes.js';
-import v1PreferencesRoutes from './routes/v1/preferences.routes.js';
-import v1PrivacyRoutes from './routes/v1/privacy.routes.js';
-import v1LocationRoutes from './routes/v1/location.routes.js';
+// ── Routes ─────────────────────────────────────────────────────────────
+import authRoutes from './routes/auth.routes.js';
+import profileRoutes from './routes/profile.routes.js';
+import { interestsCatalogueRouter, userInterestsRouter } from './routes/interests.routes.js';
+import photosRoutes from './routes/photos.routes.js';
+import preferencesRoutes from './routes/preferences.routes.js';
+import privacyRoutes from './routes/privacy.routes.js';
+import locationRoutes from './routes/location.routes.js';
 
-// ── Phase 2 routes ─────────────────────────────────────────────────────
-import v1DiscoverRoutes from './routes/v1/discover.routes.js';
-import v1InteractionsRoutes from './routes/v1/interactions.routes.js';
+import discoverRoutes from './routes/discover.routes.js';
+import interactionsRoutes from './routes/interactions.routes.js';
 
-// ── Phase 3 routes ─────────────────────────────────────────────────────
-import v1MatchesRoutes from './routes/v1/matches.routes.js';
-import v1ChatRoutes from './routes/v1/chat.routes.js';
+import matchesRoutes from './routes/matches.routes.js';
+import chatRoutes from './routes/chat.routes.js';
 
-// ── Phase 4 routes ─────────────────────────────────────────────────────
-import v1SafetyRoutes from './routes/v1/safety.routes.js';
-import v1AccountRoutes from './routes/v1/account.routes.js';
-
-// ── Legacy routes (deprecated, backward-compat only) ──────────────────
-import legacyAuthRoutes from './routes/auth.routes.js';
-import legacyOnboardingRoutes from './routes/onboarding.routes.js';
-import legacyChatRoutes from './routes/chat.routes.js';
-import legacyDiscoveryRoutes from './routes/discovery.routes.js';
-import legacyProfileRoutes from './routes/profile.routes.js';
+import safetyRoutes from './routes/safety.routes.js';
+import accountRoutes from './routes/account.routes.js';
 
 import { errorHandler, notFound } from './middleware/error.middleware.js';
 
 const app = express();
+
+// Render / any reverse proxy: trust the first hop so req.ip is the client's IP.
+// Without this every user shares one rate-limit bucket (the proxy's IP).
+app.set('trust proxy', 1);
 
 // ─── Security ──────────────────────────────────────────────────────────
 app.use(helmet());
@@ -61,20 +54,12 @@ app.use(cors({
 app.use(requestId);
 
 // ─── Global rate limit (fallback) ─────────────────────────────────────
-const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { status: 'error', code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
-});
-app.use('/api', globalLimiter);
+// Keyed per signed-in user (falls back to IP) — see rateLimiter.middleware.js
+app.use('/api', globalRateLimiter);
 
 // ─── Body parsers ─────────────────────────────────────────────────────
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(passport.initialize());
 
 // ─── HTTP logging (dev only — Pino used for structured logging) ───────
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
@@ -124,38 +109,37 @@ app.get('/api/docs.json', (_req, res) => {
   res.send(swaggerSpec);
 });
 
-// ─── v1 API Routes ────────────────────────────────────────────────────
+// ─── API Routes (/api/v1) ─────────────────────────────────────────────
 
-// Phase 1
-app.use('/api/v1/auth', authRateLimiter, v1AuthRoutes);
-app.use('/api/v1/users/profile', v1ProfileRoutes);
+// Auth, profile & onboarding
+// Strict limit only on OTP endpoints; OAuth exchange / refresh / logout get a looser one.
+app.use(
+  ['/api/v1/auth/signup', '/api/v1/auth/verify-otp', '/api/v1/auth/resend-otp', '/api/v1/auth/login'],
+  authRateLimiter
+);
+app.use('/api/v1/auth', tokenRateLimiter, authRoutes);
+app.use('/api/v1/users/profile', profileRoutes);
 app.use('/api/v1/interests', interestsCatalogueRouter);
 app.use('/api/v1/users/interests', userInterestsRouter);
-app.use('/api/v1/users/photos', uploadRateLimiter, v1PhotosRoutes);
-app.use('/api/v1/users/preferences', v1PreferencesRoutes);
-app.use('/api/v1/users/privacy', v1PrivacyRoutes);
-app.use('/api/v1/users/location', v1LocationRoutes);
+app.use('/api/v1/users/photos', uploadRateLimiter, photosRoutes);
+app.use('/api/v1/users/preferences', preferencesRoutes);
+app.use('/api/v1/users/privacy', privacyRoutes);
+app.use('/api/v1/users/location', locationRoutes);
 
-// Phase 2
-app.use('/api/v1/discover', discoverRateLimiter, v1DiscoverRoutes);
-app.use('/api/v1/interactions', interactionRateLimiter, v1InteractionsRoutes);
+// Discover & swipes
+app.use('/api/v1/discover', discoverRateLimiter, discoverRoutes);
+app.use('/api/v1/interactions', interactionRateLimiter, interactionsRoutes);
 
-// Phase 3
-app.use('/api/v1/matches', v1MatchesRoutes);
-app.use('/api/v1/chats', v1ChatRoutes);
+// Matches & chat
+app.use('/api/v1/matches', matchesRoutes);
+app.use('/api/v1/chats', chatRoutes);
 
-// Phase 4 — Safety & Account
+// Safety & account
 // IMPORTANT: /api/v1/users/blocked and /api/v1/users/account must come BEFORE
 // the dynamic /api/v1/users/:userId routes to avoid being swallowed by the param
-app.use('/api/v1/users', v1AccountRoutes);      // DELETE /api/v1/users/account
-app.use('/api/v1/users', reportRateLimiter, v1SafetyRoutes); // POST /api/v1/users/:id/report etc.
-
-// ─── Legacy Routes ────────────────────────────────────────────────────
-app.use('/api/auth', legacyAuthRoutes);
-app.use('/api/onboarding', legacyOnboardingRoutes);
-app.use('/api/chat', legacyChatRoutes);
-app.use('/api/discovery', legacyDiscoveryRoutes);
-app.use('/api/profile', legacyProfileRoutes);
+app.use('/api/v1/users', accountRoutes);      // DELETE /api/v1/users/account
+app.post('/api/v1/users/:userId/report', reportRateLimiter); // only reports are throttled hard
+app.use('/api/v1/users', safetyRoutes); // report / block / unblock / blocked
 
 // ─── Error Handling ───────────────────────────────────────────────────
 app.use(notFound);

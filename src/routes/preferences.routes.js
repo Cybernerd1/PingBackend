@@ -3,8 +3,8 @@ import {
   savePreferences,
   getPreferences,
   updatePreferences,
-} from '../../controllers/v1/preferences.controller.js';
-import { protect } from '../../middleware/auth.middleware.js';
+} from '../controllers/preferences.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
 
 const router = Router();
 

@@ -4,8 +4,8 @@ import {
   saveUserInterests,
   updateUserInterests,
   getUserInterests,
-} from '../../controllers/v1/interests.controller.js';
-import { protect } from '../../middleware/auth.middleware.js';
+} from '../controllers/interests.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
 
 // ── Public router: mounted at /api/v1/interests ────────────────────────
 export const interestsCatalogueRouter = Router();

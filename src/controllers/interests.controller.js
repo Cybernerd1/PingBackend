@@ -7,8 +7,9 @@
  * GET  /api/v1/users/interests  → getUserInterests
  */
 
-import { interestRepository } from '../../db/repositories/interest.repository.js';
-import * as R from '../../utils/response.js';
+import { interestRepository } from '../db/repositories/interest.repository.js';
+import * as R from '../utils/response.js';
+import { syncOnboardingStatus } from '../utils/onboarding.js';
 
 // ── GET /api/v1/interests (public) ────────────────────────────────────
 export const getAllInterests = async (req, res, next) => {
@@ -32,7 +33,8 @@ export const saveUserInterests = async (req, res, next) => {
     if (!Array.isArray(interest_ids) || interest_ids.length < 3)
       return R.validationError(res, 'interest_ids must be an array of at least 3 IDs');
 
-    const saved = await interestRepository.replaceUserInterests(req.user.id, interest_ids);
+    const saved = await interestRepository.replaceUserInterests(req.user.id, [...new Set(interest_ids)]);
+    await syncOnboardingStatus(req.user.id);
     return R.success(res, { interests: saved.map((i) => i.name) }, 'Interests saved');
   } catch (err) {
     next(err);
@@ -47,7 +49,8 @@ export const updateUserInterests = async (req, res, next) => {
     if (!Array.isArray(interest_ids) || interest_ids.length < 3)
       return R.validationError(res, 'interest_ids must be an array of at least 3 IDs');
 
-    const updated = await interestRepository.replaceUserInterests(req.user.id, interest_ids);
+    const updated = await interestRepository.replaceUserInterests(req.user.id, [...new Set(interest_ids)]);
+    await syncOnboardingStatus(req.user.id);
     return R.success(res, { interests: updated.map((i) => i.name) }, 'Interests updated');
   } catch (err) {
     next(err);

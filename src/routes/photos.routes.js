@@ -4,9 +4,9 @@ import {
   uploadPhotos,
   deletePhoto,
   setProfilePicture,
-} from '../../controllers/v1/photos.controller.js';
-import { protect } from '../../middleware/auth.middleware.js';
-import { upload } from '../../middleware/upload.middleware.js';
+} from '../controllers/photos.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
+import { upload } from '../middleware/upload.middleware.js';
 
 const router = Router();
 

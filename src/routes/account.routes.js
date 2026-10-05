@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { protect } from '../../middleware/auth.middleware.js';
-import { deleteAccount } from '../../controllers/v1/account.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
+import { deleteAccount } from '../controllers/account.controller.js';
 
 const router = Router();
 

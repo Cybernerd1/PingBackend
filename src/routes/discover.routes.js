@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { protect } from '../../middleware/auth.middleware.js';
-import { getDiscoverStack } from '../../controllers/v1/discover.controller.js';
+import { protect } from '../middleware/auth.middleware.js';
+import { getDiscoverStack } from '../controllers/discover.controller.js';
 
 const router = Router();
 

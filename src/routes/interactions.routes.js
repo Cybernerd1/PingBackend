@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { protect } from '../../middleware/auth.middleware.js';
+import { protect } from '../middleware/auth.middleware.js';
 import {
   recordInteraction,
   undoLike,
   undoDislike,
-} from '../../controllers/v1/interactions.controller.js';
-import { validate } from '../../middleware/validate.middleware.js';
-import { recordInteractionSchema } from '../../utils/validators/schemas.js';
+} from '../controllers/interactions.controller.js';
+import { validate } from '../middleware/validate.middleware.js';
+import { recordInteractionSchema } from '../utils/validators/schemas.js';
 
 const router = Router();
 
