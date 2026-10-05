@@ -33,6 +33,12 @@ const makeRateLimiter = (windowMs, max, message = rateLimitError) =>
     // Default key generator (IPv6-safe). app.js sets `trust proxy` so req.ip is the client.
   });
 
+// 300 requests per 15 minutes — global fallback for all /api routes
+export const globalRateLimiter = makeRateLimiter(15 * 60 * 1000, 300, {
+  ...rateLimitError,
+  message: 'Too many requests — please slow down and try again shortly',
+});
+
 // 10 requests per 15 minutes — OTP endpoints (signup, login, resend)
 export const authRateLimiter = makeRateLimiter(15 * 60 * 1000, 10, {
   ...rateLimitError,
