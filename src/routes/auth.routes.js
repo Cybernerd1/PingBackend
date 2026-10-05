@@ -1,135 +1,247 @@
 import { Router } from 'express';
-import passport from '../config/passport.js';
 import {
-  register,
+  signup,
+  verifySignupOtp,
+  resendSignupOtp,
   login,
+  verifyLoginOtp,
+  resendLoginOtp,
   googleCallback,
-  refreshAccessToken,
+  appleCallback,
+  refreshToken,
   logout,
-  getMe,
-  verifyFirebaseToken,
-  setPassword,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
-import {
-  validateRegister,
-  validateLogin,
-  validateRefreshToken,
-} from '../middleware/validators/auth.validators.js';
 
 const router = Router();
 
-/**
- * @swagger
- * tags:
- *   name: Auth
- *   description: Authentication endpoints
- */
+// ── Signup flow ────────────────────────────────────────────────────────
 
 /**
  * @swagger
- * /auth/register:
+ * /v1/auth/signup:
  *   post:
- *     summary: Register a new user with email and password
+ *     summary: Register a new user and send OTP
  *     tags: [Auth]
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RegisterRequest'
- *     responses:
- *       201:
- *         description: User registered successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthResponse'
- *       400:
- *         description: Validation error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       409:
- *         description: Email already in use
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post('/register', validateRegister, register);
-
-/**
- * @swagger
- * /auth/login:
- *   post:
- *     summary: Login with email and password
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/LoginRequest'
+ *             type: object
+ *             required: [username, preferred_challenge]
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: riya@gmail.com
+ *               preferred_challenge:
+ *                 type: string
+ *                 enum: [EMAIL_OTP, SMS_OTP]
  *     responses:
  *       200:
- *         description: Login successful
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthResponse'
+ *         description: OTP sent successfully
+ *       400:
+ *         description: Validation error
+ *       429:
+ *         description: Rate limit exceeded
+ */
+router.post('/signup', signup);
+
+/**
+ * @swagger
+ * /v1/auth/verify-otp:
+ *   post:
+ *     summary: Verify signup OTP and authenticate user
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, otp, challenge_name, session]
+ *             properties:
+ *               username:
+ *                 type: string
+ *               otp:
+ *                 type: string
+ *               challenge_name:
+ *                 type: string
+ *                 enum: [EMAIL_OTP, SMS_OTP]
+ *               session:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: OTP verified, tokens issued
  *       401:
- *         description: Invalid credentials
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *         description: Invalid OTP
  */
-router.post('/login', validateLogin, login);
+router.post('/verify-otp', verifySignupOtp);
 
 /**
  * @swagger
- * /auth/google:
- *   get:
- *     summary: Initiate Google OAuth flow
+ * /v1/auth/resend-otp:
+ *   post:
+ *     summary: Resend signup confirmation code
  *     tags: [Auth]
- *     description: Redirects the user to Google's OAuth consent page.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username]
+ *             properties:
+ *               username:
+ *                 type: string
  *     responses:
- *       302:
- *         description: Redirect to Google
+ *       200:
+ *         description: OTP resent
+ *       429:
+ *         description: Rate limit exceeded
  */
-router.get(
-  '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
-);
+router.post('/resend-otp', resendSignupOtp);
+
+// ── Login flow ─────────────────────────────────────────────────────────
 
 /**
  * @swagger
- * /auth/google/callback:
- *   get:
- *     summary: Google OAuth callback
+ * /v1/auth/login:
+ *   post:
+ *     summary: Initiate passwordless login (sends OTP)
  *     tags: [Auth]
- *     description: >
- *       Google redirects here after authentication.
- *       On success, redirects to the mobile deep link with tokens in query params.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, preferred_challenge]
+ *             properties:
+ *               username:
+ *                 type: string
+ *               preferred_challenge:
+ *                 type: string
+ *                 enum: [EMAIL_OTP, SMS_OTP]
  *     responses:
- *       302:
- *         description: Redirect to mobile deep link
+ *       200:
+ *         description: OTP sent
+ *       404:
+ *         description: User not found
  */
-router.get(
-  '/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/api/auth/google/failure' }),
-  googleCallback
-);
-
-router.get('/google/failure', (req, res) => {
-  res.status(401).json({ success: false, message: 'Google authentication failed' });
-});
+router.post('/login', login);
 
 /**
  * @swagger
- * /auth/refresh:
+ * /v1/auth/login/verify-otp:
+ *   post:
+ *     summary: Verify login OTP and get JWT tokens
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, otp, challenge_name, session]
+ *             properties:
+ *               username:
+ *                 type: string
+ *               otp:
+ *                 type: string
+ *               challenge_name:
+ *                 type: string
+ *               session:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful, tokens issued
+ *       401:
+ *         description: Invalid OTP
+ */
+router.post('/login/verify-otp', verifyLoginOtp);
+
+/**
+ * @swagger
+ * /v1/auth/login/resend-otp:
+ *   post:
+ *     summary: Resend login OTP
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [username, session]
+ *             properties:
+ *               username:
+ *                 type: string
+ *               session:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: OTP resent
+ */
+router.post('/login/resend-otp', resendLoginOtp);
+
+// ── OAuth ──────────────────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /v1/auth/google/callback:
+ *   post:
+ *     summary: Google OAuth token exchange
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [id_token]
+ *             properties:
+ *               id_token:
+ *                 type: string
+ *                 description: Google-issued ID token
+ *     responses:
+ *       200:
+ *         description: Authenticated with Google
+ *       401:
+ *         description: Invalid token
+ */
+router.post('/google/callback', googleCallback);
+
+/**
+ * @swagger
+ * /v1/auth/apple/callback:
+ *   post:
+ *     summary: Apple OAuth token exchange
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [identity_token]
+ *             properties:
+ *               identity_token:
+ *                 type: string
+ *                 description: Apple-issued identity token
+ *     responses:
+ *       200:
+ *         description: Authenticated with Apple
+ *       401:
+ *         description: Invalid token
+ */
+router.post('/apple/callback', appleCallback);
+
+// ── Token management ───────────────────────────────────────────────────
+
+/**
+ * @swagger
+ * /v1/auth/refresh-token:
  *   post:
  *     summary: Refresh access token
  *     tags: [Auth]
@@ -139,23 +251,23 @@ router.get('/google/failure', (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [refreshToken]
+ *             required: [refresh_token]
  *             properties:
- *               refreshToken:
+ *               refresh_token:
  *                 type: string
  *     responses:
  *       200:
- *         description: New tokens issued
+ *         description: New access token issued
  *       401:
- *         description: Invalid or expired refresh token
+ *         description: Invalid refresh token
  */
-router.post('/refresh', validateRefreshToken, refreshAccessToken);
+router.post('/refresh-token', refreshToken);
 
 /**
  * @swagger
- * /auth/logout:
+ * /v1/auth/logout:
  *   post:
- *     summary: Logout (invalidates refresh token)
+ *     summary: Logout user
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -166,88 +278,5 @@ router.post('/refresh', validateRefreshToken, refreshAccessToken);
  *         description: Unauthorized
  */
 router.post('/logout', protect, logout);
-
-/**
- * @swagger
- * /auth/me:
- *   get:
- *     summary: Get current authenticated user
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: User data with photos
- *       401:
- *         description: Unauthorized
- */
-router.get('/me', protect, getMe);
-
-/**
- * @swagger
- * /auth/set-password:
- *   post:
- *     summary: Set a backup password (for Google sign-in users)
- *     tags: [Auth]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [password]
- *             properties:
- *               password:
- *                 type: string
- *                 minLength: 8
- *     responses:
- *       200:
- *         description: Password set successfully
- *       400:
- *         description: Password too short
- *       401:
- *         description: Unauthorized
- */
-router.post('/set-password', protect, setPassword);
-
-/**
- * @swagger
- * /auth/verify:
- *   post:
- *     summary: Verify Firebase ID token from native Google Sign-In (React Native)
- *     tags: [Auth]
- *     description: >
- *       Called by the mobile app after the user completes native Google Sign-In
- *       via @react-native-google-signin/google-signin + Firebase Auth.
- *       Verifies the Firebase ID token, finds-or-creates the user, and returns JWT tokens.
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [firebaseIdToken]
- *             properties:
- *               firebaseIdToken:
- *                 type: string
- *                 description: Firebase ID token from userCredential.user.getIdToken()
- *               deviceId:
- *                 type: string
- *                 description: Stable device identifier for analytics/session tracking
- *     responses:
- *       200:
- *         description: Authentication successful
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/AuthResponse'
- *       400:
- *         description: Missing or invalid token
- *       401:
- *         description: Token verification failed (expired, wrong project, tampered)
- */
-router.post('/verify', verifyFirebaseToken);
 
 export default router;

@@ -1,4 +1,4 @@
-import { eq, and, ne, sql } from 'drizzle-orm';
+import { eq, and, ne } from 'drizzle-orm';
 import { db } from '../../config/database.js';
 import { users } from '../schema/users.js';
 import { photos } from '../schema/photos.js';
@@ -11,10 +11,10 @@ const stripSensitive = (user) => {
   return safe;
 };
 
-const calculateAge = (dateOfBirth) => {
-  if (!dateOfBirth) return null;
+const calculateAge = (birthdate) => {
+  if (!birthdate) return null;
   const today = new Date();
-  const dob = new Date(dateOfBirth);
+  const dob = new Date(birthdate);
   let age = today.getFullYear() - dob.getFullYear();
   const m = today.getMonth() - dob.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
@@ -45,7 +45,7 @@ export const userRepository = {
       user = { ...user, photos: userPhotos };
     }
 
-    user.age = calculateAge(user.dateOfBirth);
+    user.age = calculateAge(user.birthdate);
     return withSensitive ? user : stripSensitive(user);
   },
 
@@ -86,7 +86,7 @@ export const userRepository = {
     return result[0] ?? null;
   },
 
-  // Create user
+  // Create user — handles password hashing
   async create(data) {
     let hashedPassword = null;
     if (data.password) {
@@ -105,7 +105,7 @@ export const userRepository = {
     return stripSensitive(result[0]);
   },
 
-  // Update user
+  // Update user (whitelist approach — data passed in must already be safe)
   async update(id, data) {
     const result = await db
       .update(users)
@@ -127,7 +127,7 @@ export const userRepository = {
       .where(eq(users.id, id));
   },
 
-  // Get refresh token (sensitive field)
+  // Get refresh token (sensitive)
   async getRefreshToken(id) {
     const result = await db
       .select({ refreshToken: users.refreshToken })
@@ -140,6 +140,6 @@ export const userRepository = {
 
   // Compare password
   async comparePassword(plainPassword, hashedPassword) {
-    return await bcrypt.compare(plainPassword, hashedPassword);
+    return bcrypt.compare(plainPassword, hashedPassword);
   },
 };
