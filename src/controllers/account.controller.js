@@ -18,6 +18,7 @@ import * as R from '../utils/response.js';
 export const deleteAccount = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    if (req.user.isDemo) return R.forbidden(res, 'The shared demo account can’t be deleted');
 
     // Confirm intent — require the user to send their own userId in the body
     // as a double-confirmation guard (pattern similar to GitHub repo delete)

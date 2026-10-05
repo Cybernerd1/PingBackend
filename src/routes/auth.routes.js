@@ -6,6 +6,7 @@ import {
   login,
   verifyLoginOtp,
   resendLoginOtp,
+  loginWithPassword,
   googleCallback,
   appleCallback,
   refreshToken,
@@ -184,6 +185,31 @@ router.post('/login/verify-otp', verifyLoginOtp);
  *         description: OTP resent
  */
 router.post('/login/resend-otp', resendLoginOtp);
+
+/**
+ * @swagger
+ * /v1/auth/login/password:
+ *   post:
+ *     summary: Email + password sign-in (demo / test account)
+ *     description: Demo account is demo@ping.app / Demo@1234. Signing in as the demo user puts unmatched sample profiles back in its deck.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string, example: demo@ping.app }
+ *               password: { type: string, example: Demo@1234 }
+ *     responses:
+ *       200:
+ *         description: Authenticated
+ *       401:
+ *         description: Incorrect email or password
+ */
+router.post('/login/password', loginWithPassword);
 
 // ── OAuth ──────────────────────────────────────────────────────────────
 

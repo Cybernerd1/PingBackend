@@ -22,6 +22,9 @@ import {
 import { verifyFirebaseIdToken } from '../utils/firebase.utils.js';
 import { verifyGoogleIdToken } from '../utils/google.utils.js';
 import * as R from '../utils/response.js';
+import bcrypt from 'bcryptjs';
+import { db } from '../config/database.js';
+import { sql } from 'drizzle-orm';
 
 // ── Helper: issue tokens & send response ──────────────────────────────
 const sendTokens = async (res, user, statusCode = 200, extra = {}) => {
@@ -160,6 +163,51 @@ export const resendLoginOtp = async (req, res, next) => {
     const { username } = req.body;
     if (!username) return R.validationError(res, 'username is required');
     return R.success(res, {}, 'OTP resent');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Demo deck refresh ─────────────────────────────────────────────────
+// Every demo sign-in puts unmatched sample profiles back in the deck, so the
+// shared test account never runs out of people to swipe. Matches/chats stay.
+const refreshDemoDeck = async (demoId) => {
+  await db.execute(sql`
+    DELETE FROM swipes s
+    USING users d
+    WHERE s.swiper_id = ${demoId}
+      AND d.id = s.swiped_id
+      AND d.is_dummy = true
+      AND NOT EXISTS (
+        SELECT 1 FROM matches m
+        WHERE (m.user_a_id = ${demoId} AND m.user_b_id = d.id)
+           OR (m.user_b_id = ${demoId} AND m.user_a_id = d.id)
+      )
+  `);
+};
+
+// ── Email + password: POST /api/v1/auth/login/password ───────────────
+// Used by the shared demo/test account (demo@ping.app). Any account with a
+// password hash can sign in this way; Google-only accounts have none.
+export const loginWithPassword = async (req, res, next) => {
+  try {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    if (!email || !password) return R.validationError(res, 'email and password are required');
+
+    const user = await userRepository.findByEmail(email, { withSensitive: true });
+    const ok = user?.password ? await bcrypt.compare(password, user.password) : false;
+    if (!ok || user.isDummy) return R.unauthorized(res, 'Incorrect email or password');
+    if (user.isAccountDeleted || user.isBanned) return R.unauthorized(res, 'This account is not available');
+
+    let current = user;
+    if (user.isDeleted) current = await userRepository.update(user.id, { isDeleted: false });
+    if (user.isDemo) await refreshDemoDeck(user.id);
+
+    return sendTokens(res, current, 200, {
+      profile_exists: !!(current.birthdate && current.gender),
+      is_demo: !!user.isDemo,
+    });
   } catch (err) {
     next(err);
   }

@@ -23,12 +23,14 @@ import photosRoutes from './routes/photos.routes.js';
 import preferencesRoutes from './routes/preferences.routes.js';
 import privacyRoutes from './routes/privacy.routes.js';
 import locationRoutes from './routes/location.routes.js';
+import devicesRoutes from './routes/devices.routes.js';
 
 import discoverRoutes from './routes/discover.routes.js';
 import interactionsRoutes from './routes/interactions.routes.js';
 
 import matchesRoutes from './routes/matches.routes.js';
 import chatRoutes from './routes/chat.routes.js';
+import assistantRoutes from './routes/assistant.routes.js';
 
 import safetyRoutes from './routes/safety.routes.js';
 import accountRoutes from './routes/account.routes.js';
@@ -125,6 +127,7 @@ app.use('/api/v1/users/photos', uploadRateLimiter, photosRoutes);
 app.use('/api/v1/users/preferences', preferencesRoutes);
 app.use('/api/v1/users/privacy', privacyRoutes);
 app.use('/api/v1/users/location', locationRoutes);
+app.use('/api/v1/users/devices', devicesRoutes);
 
 // Discover & swipes
 app.use('/api/v1/discover', discoverRateLimiter, discoverRoutes);
@@ -133,6 +136,7 @@ app.use('/api/v1/interactions', interactionRateLimiter, interactionsRoutes);
 // Matches & chat
 app.use('/api/v1/matches', matchesRoutes);
 app.use('/api/v1/chats', chatRoutes);
+app.use('/api/v1/assistant', assistantRoutes);
 
 // Safety & account
 // IMPORTANT: /api/v1/users/blocked and /api/v1/users/account must come BEFORE

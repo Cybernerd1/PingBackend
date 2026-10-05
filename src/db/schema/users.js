@@ -71,6 +71,12 @@ export const users = pgTable('users', {
 
   role: roleEnum('role').default('user').notNull(),
 
+  // ── Demo / seed accounts ───────────────────────────────────────────
+  // is_demo  → shared test login (email + password). Sees real + dummy users.
+  // is_dummy → seeded sample profiles. Only visible to demo accounts; can't sign in.
+  isDemo: boolean('is_demo').default(false).notNull(),
+  isDummy: boolean('is_dummy').default(false).notNull(),
+
   createdAt: timestamp('created_at', { withTimezone: true })
     .default(sql`now()`)
     .notNull(),

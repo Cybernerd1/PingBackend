@@ -64,7 +64,7 @@ CREATE TABLE "matches" (
 ALTER TABLE "users" ALTER COLUMN "gender" SET DATA TYPE text;--> statement-breakpoint
 DROP TYPE "public"."gender";--> statement-breakpoint
 CREATE TYPE "public"."gender" AS ENUM('male', 'female', 'non-binary', 'other', 'prefer_not_to_say');--> statement-breakpoint
-ALTER TABLE "users" ALTER COLUMN "gender" SET DATA TYPE "public"."gender" USING "gender"::"public"."gender";--> statement-breakpoint
+ALTER TABLE "users" ALTER COLUMN "gender" SET DATA TYPE "public"."gender" USING (CASE "gender"::text WHEN 'man' THEN 'male' WHEN 'woman' THEN 'female' WHEN 'male' THEN 'male' WHEN 'female' THEN 'female' WHEN 'non-binary' THEN 'non-binary' WHEN 'other' THEN 'other' WHEN 'prefer_not_to_say' THEN 'prefer_not_to_say' ELSE NULL END)::"public"."gender";--> statement-breakpoint
 ALTER TABLE "users" ALTER COLUMN "username" SET DATA TYPE varchar(30);--> statement-breakpoint
 ALTER TABLE "messages" ALTER COLUMN "content" SET DEFAULT '';--> statement-breakpoint
 ALTER TABLE "users" ADD COLUMN "phone" varchar(30);--> statement-breakpoint

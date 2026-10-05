@@ -106,6 +106,7 @@ export const getMyProfile = async (req, res, next) => {
         })),
         onboarding_step: status.step,
         onboarding_completed: status.completed,
+        is_demo: !!user.isDemo,
         created_at: user.createdAt,
       },
       'Profile fetched successfully'
@@ -192,6 +193,7 @@ export const updateProfile = async (req, res, next) => {
 // ── DELETE /api/v1/users/profile (soft-delete) ───────────────────────
 export const deleteProfile = async (req, res, next) => {
   try {
+    if (req.user.isDemo) return R.forbidden(res, 'The shared demo account can’t be deleted');
     await userRepository.update(req.user.id, { isDeleted: true });
     return R.success(res, { deleted: true }, 'Profile deleted successfully');
   } catch (err) {

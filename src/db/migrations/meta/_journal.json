@@ -36,6 +36,20 @@
       "when": 1791218337038,
       "tag": "0004_seed_interests",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791226321268,
+      "tag": "0005_demo_and_assistant",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791226324490,
+      "tag": "0006_seed_demo_users",
+      "breakpoints": true
     }
   ]
 }

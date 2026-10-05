@@ -17,6 +17,7 @@ import { conversations } from '../db/schema/conversations.js';
 import { eq, and, or } from 'drizzle-orm';
 import * as R from '../utils/response.js';
 import { getIO } from '../socket/index.js';
+import { sendPushToUser, getUserName } from '../services/push.service.js';
 
 // ── POST /api/v1/interactions ──────────────────────────────────────────
 export const recordInteraction = async (req, res, next) => {
@@ -121,6 +122,15 @@ export const recordInteraction = async (req, res, next) => {
     } catch {
       // Socket may not be initialized in tests — non-fatal
     }
+
+    // Push to the other person (the swiper already sees the match overlay)
+    getUserName(currentUserId).then((name) =>
+      sendPushToUser(targetUserId, {
+        title: 'It’s a match! 💜',
+        body: `You and ${name} liked each other. Say hi!`,
+        data: { type: 'match', chat_id: chat.id },
+      })
+    );
 
     return R.success(
       res,

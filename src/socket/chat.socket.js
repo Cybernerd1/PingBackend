@@ -33,6 +33,7 @@ import { verifyAccessToken } from '../utils/jwt.utils.js';
 import { userRepository } from '../db/repositories/user.repository.js';
 import { messageRepository } from '../db/repositories/message.repository.js';
 import { conversationRepository } from '../db/repositories/conversation.repository.js';
+import { sendPushToUser, getUserName } from '../services/push.service.js';
 
 // ── In-process presence store ──────────────────────────────────────────
 // Maps userId → Set<socketId>. Supports multiple devices per user.
@@ -213,6 +214,17 @@ export const initChatSocket = (io) => {
             io.to(sid).emit('new_message', { message: wireMessage });
           }
         });
+
+        // Push notification when partner has no live socket (background / closed)
+        if (!isOnline(partnerId)) {
+          getUserName(userId).then((name) =>
+            sendPushToUser(partnerId, {
+              title: name,
+              body: message.messageType === 'image' ? '📷 Sent you a photo' : message.messageType === 'voice' ? '🎤 Voice message' : message.content,
+              data: { type: 'message', chat_id: chatId },
+            })
+          );
+        }
       } catch {
         socketError(socket, 'INTERNAL_ERROR', 'Failed to send message');
       }

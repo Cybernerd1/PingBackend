@@ -9,3 +9,4 @@ export * from './swipes.js';
 export * from './matches.js';
 export * from './reports.js';
 export * from './blocks.js';
+export * from './assistant.js';

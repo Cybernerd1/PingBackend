@@ -116,6 +116,13 @@ export const getDiscoverStack = async (req, res, next) => {
       baseConditions.push(not(inArray(users.id, excludeIds)));
     }
 
+    // Demo/sample accounts: the demo login sees real users + sample profiles;
+    // everyone else never sees demo or sample accounts.
+    const viewerIsDemo = !!currentUser.isDemo;
+    if (!viewerIsDemo) {
+      baseConditions.push(eq(users.isDummy, false), eq(users.isDemo, false));
+    }
+
     // 4. Gender preference filter
     const interestedIn = prefs?.interestedIn ?? [];
     const hasGenderFilter =
@@ -138,6 +145,7 @@ export const getDiscoverStack = async (req, res, next) => {
         googleAvatar: users.googleAvatar,
         locationLat: users.locationLat,
         locationLng: users.locationLng,
+        isDummy: users.isDummy,
       })
       .from(users)
       .where(and(...baseConditions))
@@ -174,14 +182,18 @@ export const getDiscoverStack = async (req, res, next) => {
       })
       .filter((c) => {
         if (c.age !== null && (c.age < minAge || c.age > maxAge)) return false;
+        // Sample profiles live in one city; don't hide them from a demo
+        // tester who is somewhere else.
         if (
           hasLocation &&
+          !c.isDummy &&
           c.distanceKm !== null &&
           c.distanceKm > maxDistanceKm
         )
           return false;
         return true;
       })
+      .sort((a, b) => Number(a.isDummy) - Number(b.isDummy))
       .slice(0, limit);
 
     if (filtered.length === 0) {

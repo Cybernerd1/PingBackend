@@ -12,7 +12,26 @@
  *   default     → 100 requests / 15 min (everything else)
  */
 
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { verifyAccessToken } from '../utils/jwt.utils.js';
+
+/**
+ * Bucket by signed-in user when a valid access token is present, otherwise by IP.
+ * Mobile carriers / campus Wi-Fi put many users behind one IP, so IP-only keys
+ * would make users throttle each other.
+ */
+export const userOrIpKey = (req) => {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      const { userId } = verifyAccessToken(auth.slice(7));
+      if (userId) return `u:${userId}`;
+    } catch {
+      // fall through to IP
+    }
+  }
+  return `ip:${ipKeyGenerator(req.ip || '0.0.0.0')}`;
+};
 
 const rateLimitError = {
   status: 'error',
@@ -30,13 +49,13 @@ const makeRateLimiter = (windowMs, max, message = rateLimitError) =>
     handler: (req, res, next, options) => {
       res.status(options.statusCode).json(options.message);
     },
-    // Default key generator (IPv6-safe). app.js sets `trust proxy` so req.ip is the client.
+    keyGenerator: userOrIpKey,
   });
 
-// 300 requests per 15 minutes — global fallback for all /api routes
-export const globalRateLimiter = makeRateLimiter(15 * 60 * 1000, 300, {
+// 600 requests per 15 minutes per user (or IP) — fallback for every /api route
+export const globalRateLimiter = makeRateLimiter(15 * 60 * 1000, 600, {
   ...rateLimitError,
-  message: 'Too many requests — please slow down and try again shortly',
+  message: 'Too many requests',
 });
 
 // 10 requests per 15 minutes — OTP endpoints (signup, login, resend)
@@ -73,4 +92,10 @@ export const uploadRateLimiter = makeRateLimiter(60 * 1000, 20, {
 export const reportRateLimiter = makeRateLimiter(60 * 60 * 1000, 5, {
   ...rateLimitError,
   message: 'Report rate limit exceeded — you can report up to 5 users per hour',
+});
+
+// 20 assistant messages per minute (each one may call OpenRouter)
+export const assistantRateLimiter = makeRateLimiter(60 * 1000, 20, {
+  ...rateLimitError,
+  message: 'You’re messaging Ping Assistant too fast — wait a moment and try again',
 });
