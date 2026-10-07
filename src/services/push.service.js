@@ -61,7 +61,7 @@ export const removeDeviceToken = async (token) => {
 };
 
 /** Fire-and-forget push to every device of a user. Never throws. */
-export const sendPushToUser = async (userId, { title, body, data = {} }) => {
+export const sendPushToUser = async (userId, { title, body, imageUrl, data = {} }) => {
   try {
     const messaging = await getMessaging();
     if (!messaging) return;
@@ -69,11 +69,16 @@ export const sendPushToUser = async (userId, { title, body, data = {} }) => {
     const { rows } = await pool.query('SELECT token FROM device_tokens WHERE user_id = $1', [userId]);
     if (!rows.length) return;
     const tokens = rows.map(r => r.token);
+    const payloadData = { ...data, ...(imageUrl ? { avatar_url: imageUrl } : {}) };
     const res = await messaging.sendEachForMulticast({
       tokens,
-      notification: { title, body },
-      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-      android: { priority: 'high' },
+      // Title is branded with the app name: "Ping · Name"
+      notification: { title: `Ping · ${title}`, body, ...(imageUrl ? { imageUrl } : {}) },
+      data: Object.fromEntries(Object.entries(payloadData).map(([k, v]) => [k, String(v)])),
+      android: {
+        priority: 'high',
+        notification: { color: '#7C3AED', ...(imageUrl ? { imageUrl } : {}) },
+      },
     });
     const dead = [];
     res.responses.forEach((r, i) => {
@@ -91,4 +96,15 @@ export const sendPushToUser = async (userId, { title, body, data = {} }) => {
 export const getUserName = async (userId) => {
   const { rows } = await pool.query('SELECT full_name FROM users WHERE id = $1', [userId]);
   return rows[0]?.full_name?.split(' ')[0] || 'Someone';
+};
+
+/** First name + first profile photo, for rich notifications. */
+export const getUserCard = async (userId) => {
+  const { rows } = await pool.query(
+    `SELECT u.full_name,
+            (SELECT url FROM photos p WHERE p.user_id = u.id ORDER BY p."order" ASC LIMIT 1) AS photo
+     FROM users u WHERE u.id = $1`,
+    [userId]
+  );
+  return { name: rows[0]?.full_name?.split(' ')[0] || 'Someone', photo: rows[0]?.photo || null };
 };

@@ -186,6 +186,7 @@ export const getDiscoverStack = async (req, res, next) => {
         // tester who is somewhere else.
         if (
           hasLocation &&
+          maxDistanceKm < 20000 && // 20000+ = "No limit"
           !c.isDummy &&
           c.distanceKm !== null &&
           c.distanceKm > maxDistanceKm

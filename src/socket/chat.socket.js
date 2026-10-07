@@ -33,7 +33,7 @@ import { verifyAccessToken } from '../utils/jwt.utils.js';
 import { userRepository } from '../db/repositories/user.repository.js';
 import { messageRepository } from '../db/repositories/message.repository.js';
 import { conversationRepository } from '../db/repositories/conversation.repository.js';
-import { sendPushToUser, getUserName } from '../services/push.service.js';
+import { sendPushToUser, getUserCard } from '../services/push.service.js';
 
 // ── In-process presence store ──────────────────────────────────────────
 // Maps userId → Set<socketId>. Supports multiple devices per user.
@@ -217,11 +217,12 @@ export const initChatSocket = (io) => {
 
         // Push notification when partner has no live socket (background / closed)
         if (!isOnline(partnerId)) {
-          getUserName(userId).then((name) =>
+          getUserCard(userId).then(({ name, photo }) =>
             sendPushToUser(partnerId, {
               title: name,
               body: message.messageType === 'image' ? '📷 Sent you a photo' : message.messageType === 'voice' ? '🎤 Voice message' : message.content,
-              data: { type: 'message', chat_id: chatId },
+              imageUrl: photo,
+              data: { type: 'message', chat_id: chatId, sender_name: name },
             })
           );
         }
