@@ -91,6 +91,14 @@ export const recordInteraction = async (req, res, next) => {
 
       if (existingChat) {
         chat = existingChat;
+        if (existingChat.statusCode === 'archived') {
+          const [revived] = await tx
+            .update(conversations)
+            .set({ statusCode: 'active', matchId: match.id, updatedAt: new Date() })
+            .where(eq(conversations.id, existingChat.id))
+            .returning();
+          chat = revived;
+        }
       } else {
         const [newChat] = await tx
           .insert(conversations)

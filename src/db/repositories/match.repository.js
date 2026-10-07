@@ -3,6 +3,7 @@ import { matches } from '../schema/matches.js';
 import { users } from '../schema/users.js';
 import { photos } from '../schema/photos.js';
 import { eq, or, and, desc } from 'drizzle-orm';
+import { swipes } from '../schema/swipes.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -26,7 +27,16 @@ export const matchRepository = {
       .select()
       .from(matches)
       .where(and(eq(matches.userAId, userAId), eq(matches.userBId, userBId)));
-    if (existing) return existing;
+    if (existing) {
+      if (existing.isActive) return existing;
+      // Previously unmatched — reactivate on re-match
+      const [reactivated] = await db
+        .update(matches)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(matches.id, existing.id))
+        .returning();
+      return reactivated;
+    }
 
     const [row] = await db
       .insert(matches)
@@ -143,6 +153,15 @@ export const matchRepository = {
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(matches.id, matchId))
       .returning();
+    // Forget past swipes in both directions so the pair is discoverable again
+    await db
+      .delete(swipes)
+      .where(
+        or(
+          and(eq(swipes.swiperId, match.userAId), eq(swipes.swipedId, match.userBId)),
+          and(eq(swipes.swiperId, match.userBId), eq(swipes.swipedId, match.userAId))
+        )
+      );
     return updated;
   },
 
