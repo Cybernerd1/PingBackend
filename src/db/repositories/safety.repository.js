@@ -1,4 +1,5 @@
 import { eq, and, or } from 'drizzle-orm';
+import { swipes } from '../schema/swipes.js';
 import { db } from '../../config/database.js';
 import { reports } from '../schema/reports.js';
 import { blocks } from '../schema/blocks.js';
@@ -86,6 +87,19 @@ export const safetyRepository = {
         and(eq(blocks.blockerId, blockerId), eq(blocks.blockedId, blockedId))
       )
       .returning();
+
+    if (deleted) {
+      // Remove old swipes so both users re-appear in each other's discover deck.
+      await db
+        .delete(swipes)
+        .where(
+          or(
+            and(eq(swipes.swiperId, blockerId), eq(swipes.swipedId, blockedId)),
+            and(eq(swipes.swiperId, blockedId), eq(swipes.swipedId, blockerId))
+          )
+        );
+    }
+
     return deleted ?? null;
   },
 

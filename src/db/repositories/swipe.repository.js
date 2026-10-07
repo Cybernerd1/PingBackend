@@ -1,6 +1,7 @@
 import { db } from '../../config/database.js';
 import { swipes } from '../schema/swipes.js';
-import { eq, and } from 'drizzle-orm';
+import { matches } from '../schema/matches.js';
+import { eq, and, or } from 'drizzle-orm';
 
 export const swipeRepository = {
   /**
@@ -76,12 +77,40 @@ export const swipeRepository = {
   /**
    * Get all user IDs that swiperId has already swiped (any direction).
    * Used to exclude from discover stack.
+   *
+   * Excludes swipes toward users the swiper has since unmatched — those pairs
+   * should be discoverable again (unmatch also deletes swipes going forward,
+   * but this covers rows that predate that fix).
    */
   async getSwipedIds(swiperId) {
     const rows = await db
       .select({ swipedId: swipes.swipedId })
       .from(swipes)
       .where(eq(swipes.swiperId, swiperId));
-    return rows.map((r) => r.swipedId);
+
+    if (rows.length === 0) return [];
+
+    const swipedIds = rows.map((r) => r.swipedId);
+
+    // Fetch inactive matches involving swiperId
+    const inactiveMatches = await db
+      .select({ userAId: matches.userAId, userBId: matches.userBId })
+      .from(matches)
+      .where(
+        and(
+          or(eq(matches.userAId, swiperId), eq(matches.userBId, swiperId)),
+          eq(matches.isActive, false)
+        )
+      );
+
+    // Build set of unmatched partner IDs
+    const unmatchedIds = new Set(
+      inactiveMatches.map((m) =>
+        m.userAId === swiperId ? m.userBId : m.userAId
+      )
+    );
+
+    // Exclude swipes toward unmatched partners
+    return swipedIds.filter((id) => !unmatchedIds.has(id));
   },
 };
