@@ -14,6 +14,17 @@ export const getIO = () => {
 };
 
 /**
+ * Force-disconnect every live socket of a user (ban / delete).
+ * Each socket joins its personal room `user:${userId}` on connection
+ * (see chat.socket.js), so one room kick covers all their devices.
+ */
+export const disconnectUser = (userId) => {
+  if (!_io) return 0;
+  _io.in(`user:${userId}`).disconnectSockets(true);
+  return true;
+};
+
+/**
  * Initializes the Socket.IO server and attaches all namespaces.
  * @param {import('http').Server} httpServer
  * @returns {import('socket.io').Server}

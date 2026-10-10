@@ -13,6 +13,8 @@ import {
   interactionRateLimiter,
   uploadRateLimiter,
   reportRateLimiter,
+  adminLoginRateLimiter,
+  adminMfaRateLimiter,
 } from './middleware/rateLimiter.middleware.js';
 
 // ── Routes ─────────────────────────────────────────────────────────────
@@ -34,6 +36,7 @@ import assistantRoutes from './routes/assistant.routes.js';
 
 import safetyRoutes from './routes/safety.routes.js';
 import accountRoutes from './routes/account.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 import { errorHandler, notFound } from './middleware/error.middleware.js';
 
@@ -45,8 +48,26 @@ app.set('trust proxy', 1);
 
 // ─── Security ──────────────────────────────────────────────────────────
 app.use(helmet());
+
+// CORS: comma-separated allow-list in CORS_ORIGIN, meant to be the ADMIN
+// dashboard origin (the mobile app is native and unaffected by CORS).
+// credentials: true — the admin app sends Authorization headers with
+// credentialed requests. We use Bearer tokens (no cookies), so CSRF does
+// not apply; if cookie sessions are ever introduced, add SameSite=Strict
+// or a double-submit token here.
+const allowedOrigins = (process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: allowedOrigins.includes('*')
+    ? true // permissive dev mode — reflect request origin
+    : (origin, cb) =>
+        !origin || allowedOrigins.includes(origin)
+          ? cb(null, true)
+          : cb(new Error(`Origin ${origin} not allowed by CORS`)),
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
   exposedHeaders: ['X-Request-ID'],
@@ -144,6 +165,14 @@ app.use('/api/v1/assistant', assistantRoutes);
 app.use('/api/v1/users', accountRoutes);      // DELETE /api/v1/users/account
 app.post('/api/v1/users/:userId/report', reportRateLimiter); // only reports are throttled hard
 app.use('/api/v1/users', safetyRoutes); // report / block / unblock / blocked
+
+// ─── Admin (/api/v1/admin) ────────────────────────────────────────────
+// Separate admin-audience JWT + DB role re-check inside requireAdmin.
+// Login/MFA are throttled per IP AND per account; reads/mutations are
+// throttled inside admin.routes.js.
+app.use('/api/v1/admin/auth/login', adminLoginRateLimiter);
+app.use('/api/v1/admin/auth/mfa/verify', adminMfaRateLimiter);
+app.use('/api/v1/admin', adminRoutes);
 
 // ─── Error Handling ───────────────────────────────────────────────────
 app.use(notFound);

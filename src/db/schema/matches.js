@@ -4,6 +4,7 @@ import {
   boolean,
   timestamp,
   unique,
+  index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
@@ -42,5 +43,7 @@ export const matches = pgTable(
   (table) => ({
     // A pair can only match once
     uniqueMatch: unique('unique_match').on(table.userAId, table.userBId),
+    // Admin stats time series
+    createdAtIdx: index('matches_created_at_idx').on(table.createdAt),
   })
 );

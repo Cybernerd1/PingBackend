@@ -286,6 +286,17 @@ export const refreshToken = async (req, res, next) => {
     if (!stored || stored !== refresh_token)
       return R.unauthorized(res, 'Refresh token is invalid or has been rotated');
 
+    // Ban / deletion enforcement: a live refresh token must never mint a
+    // fresh session for a banned or deleted account. (Legacy flow stores
+    // the refresh token on the user row, so check the user, not the token.)
+    const refreshUser = await userRepository.findById(decoded.userId);
+    if (!refreshUser)
+      return R.unauthorized(res, 'User no longer exists');
+    if (refreshUser.isAccountDeleted || refreshUser.isDeleted)
+      return R.unauthorized(res, 'This account has been deleted');
+    if (refreshUser.isBanned)
+      return R.forbidden(res, 'Your account has been suspended');
+
     const newAccessToken = generateAccessToken(decoded.userId);
     const newRefreshToken = generateRefreshToken(decoded.userId);
     await userRepository.updateRefreshToken(decoded.userId, newRefreshToken);

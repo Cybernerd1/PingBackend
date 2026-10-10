@@ -10,3 +10,6 @@ export * from './matches.js';
 export * from './reports.js';
 export * from './blocks.js';
 export * from './assistant.js';
+export * from './admin_audit_log.js';
+export * from './refresh_tokens.js';
+export * from './admin_credentials.js';

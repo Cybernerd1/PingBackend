@@ -13,7 +13,7 @@
  */
 
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { verifyAccessToken } from '../utils/jwt.utils.js';
+import { verifyAccessToken, verifyAdminAccessToken } from '../utils/jwt.utils.js';
 
 /**
  * Bucket by signed-in user when a valid access token is present, otherwise by IP.
@@ -33,13 +33,31 @@ export const userOrIpKey = (req) => {
   return `ip:${ipKeyGenerator(req.ip || '0.0.0.0')}`;
 };
 
+/**
+ * Admin variant: buckets by the admin-audience token when valid.
+ * App tokens are signed with a different secret → they never pass this,
+ * so admin rate-limit buckets can't be shared or spoofed by regular users.
+ */
+export const adminOrIpKey = (req) => {
+  const auth = req.headers.authorization;
+  if (auth?.startsWith('Bearer ')) {
+    try {
+      const { userId } = verifyAdminAccessToken(auth.slice(7));
+      if (userId) return `admin:${userId}`;
+    } catch {
+      // fall through to IP
+    }
+  }
+  return `ip:${ipKeyGenerator(req.ip || '0.0.0.0')}`;
+};
+
 const rateLimitError = {
   status: 'error',
   code: 'RATE_LIMIT_EXCEEDED',
   message: 'Too many requests — please wait before trying again',
 };
 
-const makeRateLimiter = (windowMs, max, message = rateLimitError) =>
+const makeRateLimiter = (windowMs, max, message = rateLimitError, keyGenerator = userOrIpKey) =>
   rateLimit({
     windowMs,
     max,
@@ -49,7 +67,7 @@ const makeRateLimiter = (windowMs, max, message = rateLimitError) =>
     handler: (req, res, next, options) => {
       res.status(options.statusCode).json(options.message);
     },
-    keyGenerator: userOrIpKey,
+    keyGenerator,
   });
 
 // 600 requests per 15 minutes per user (or IP) — fallback for every /api route
@@ -99,3 +117,61 @@ export const assistantRateLimiter = makeRateLimiter(60 * 1000, 20, {
   ...rateLimitError,
   message: 'You’re messaging Ping Assistant too fast — wait a moment and try again',
 });
+
+// ── Admin limiters ───────────────────────────────────────────────────────
+// Login + MFA verify: 5/min keyed by IP AND account (email comes from the body)
+export const adminLoginRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  keyGenerator: (req) =>
+    `adminlogin:${ipKeyGenerator(req.ip || '0.0.0.0')}:${String(req.body?.email || '').trim().toLowerCase()}`,
+  handler: (req, res, next, options) => {
+    res.status(options.statusCode).json(options.message);
+  },
+  message: {
+    ...rateLimitError,
+    message: 'Too many admin login attempts — wait a minute and try again',
+  },
+});
+
+export const adminMfaRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `adminmfa:${ipKeyGenerator(req.ip || '0.0.0.0')}`,
+  handler: (req, res, next, options) => {
+    res.status(options.statusCode).json(options.message);
+  },
+  message: {
+    ...rateLimitError,
+    message: 'Too many verification attempts — wait a minute and try again',
+  },
+});
+
+// Admin refresh/logout: looser, they are part of normal session flow
+export const adminTokenRateLimiter = makeRateLimiter(
+  60 * 1000,
+  30,
+  { ...rateLimitError, message: 'Too many admin token requests' },
+  adminOrIpKey
+);
+
+// Admin reads: 60/min per admin (or IP pre-auth)
+export const adminReadRateLimiter = makeRateLimiter(
+  60 * 1000,
+  60,
+  { ...rateLimitError, message: 'Admin read rate limit exceeded' },
+  adminOrIpKey
+);
+
+// Admin mutations: stricter — 20/min
+export const adminMutationRateLimiter = makeRateLimiter(
+  60 * 1000,
+  20,
+  { ...rateLimitError, message: 'Admin mutation rate limit exceeded' },
+  adminOrIpKey
+);

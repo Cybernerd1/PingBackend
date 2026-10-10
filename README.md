@@ -4,6 +4,10 @@ A production-ready, real-time backend API built with Express 5, PostgreSQL (Neon
 
 ---
 
+> 🛡️ **Admin backend** (auth + MFA, ban enforcement, reports moderation, audit log, stats, purge job): see [ADMIN.md](./ADMIN.md).
+
+---
+
 ## 🚀 Features
 
 - 🔐 **Authentication & Authorization**

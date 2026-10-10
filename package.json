@@ -10,7 +10,10 @@
     "db:migrate": "node src/db/migrate.js",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test:e2e": "node --env-file=.env tests/e2e.v1.mjs"
+    "test:e2e": "node --env-file=.env tests/e2e.v1.mjs",
+    "admin:create": "node --env-file=.env scripts/create-admin.mjs",
+    "jobs:purge": "node --env-file=.env -e \"import('./src/jobs/purge.job.js').then(m => m.runPurgeOnce().then(r => { console.log(JSON.stringify(r)); process.exit(0); }).catch(e => { console.error(e); process.exit(1); }))\"",
+    "test:admin": "node --env-file=.env tests/admin.e2e.mjs"
   },
   "keywords": [],
   "author": "",

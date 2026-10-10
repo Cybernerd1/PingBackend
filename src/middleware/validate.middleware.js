@@ -24,7 +24,12 @@ export const validate = (schema, target = 'body') => (req, res, next) => {
     return R.error(res, 400, 'VALIDATION_ERROR', 'Invalid request', details);
   }
 
-  // Replace with parsed (coerced/stripped) data
-  req[target] = result.data;
+  // Express 5: req.query is getter-only — merge in place instead of assigning.
+  // .strict() schemas guarantee no unknown keys slip past, so the merge is safe.
+  if (target === 'query') {
+    Object.assign(req.query, result.data);
+  } else {
+    req[target] = result.data;
+  }
   next();
 };

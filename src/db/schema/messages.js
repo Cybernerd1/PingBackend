@@ -6,6 +6,7 @@ import {
   varchar,
   timestamp,
   pgEnum,
+  index,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { users } from './users.js';
@@ -26,7 +27,6 @@ export const messages = pgTable('messages', {
   id: uuid('id')
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-
   conversationId: uuid('conversation_id')
     .notNull()
     .references(() => conversations.id, { onDelete: 'cascade' }),
@@ -52,4 +52,10 @@ export const messages = pgTable('messages', {
   createdAt: timestamp('created_at', { withTimezone: true })
     .default(sql`now()`)
     .notNull(),
-});
+}, (table) => ({
+  // Admin conversation reads + chat history cursor pagination
+  conversationCreatedIdx: index('messages_conversation_created_idx').on(
+    table.conversationId,
+    table.createdAt
+  ),
+}));

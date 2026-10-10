@@ -50,6 +50,13 @@
       "when": 1791226324490,
       "tag": "0006_seed_demo_users",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791614159931,
+      "tag": "0007_admin_security",
+      "breakpoints": true
     }
   ]
 }

@@ -34,9 +34,9 @@ async function mkUser(email, name) {
     `insert into users (email, full_name, google_id) values ($1,$2,$3) returning id`,
     [email, name, 'g-' + email]);
   const id = rows[0].id;
-  const refresh = jwt.sign({ userId: id }, REFRESH, { expiresIn: '7d' });
+  const refresh = jwt.sign({ userId: id, aud: 'app' }, REFRESH, { expiresIn: '7d' });
   await pool.query('update users set refresh_token=$1 where id=$2', [refresh, id]);
-  return { id, token: jwt.sign({ userId: id }, ACCESS, { expiresIn: '1h' }), refresh };
+  return { id, token: jwt.sign({ userId: id, aud: 'app' }, ACCESS, { expiresIn: '1h' }), refresh };
 }
 
 const once = (sock, ev, ms = 4000) => new Promise((res, rej) => {

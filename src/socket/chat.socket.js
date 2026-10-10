@@ -88,6 +88,8 @@ export const initChatSocket = (io) => {
       if (!user) return next(new Error('AUTH_INVALID: User not found'));
       if (user.isDeleted || user.isAccountDeleted)
         return next(new Error('AUTH_INVALID: Account deleted'));
+      if (user.isBanned)
+        return next(new Error('AUTH_BANNED: Account suspended'));
 
       socket.user = user;
       next();
