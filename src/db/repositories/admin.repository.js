@@ -218,7 +218,7 @@ export const adminRepository = {
         .limit(20),
     ]);
 
-    const { password, refreshToken, ...safe } = user;
+    const { password, refreshToken, sessionVersion, ...safe } = user;
     return {
       ...safe,
       photos: userPhotos,
