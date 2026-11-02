@@ -24,14 +24,12 @@ pool.on('error', (err) => {
 export const db = drizzle(pool, { schema });
 
 export const connectDB = async () => {
+  const client = await pool.connect();
   try {
-    const client = await pool.connect();
     const result = await client.query('SELECT NOW()');
-    client.release();
     console.log(`NeonDB Connected at: ${result.rows[0].now}`);
-  } catch (error) {
-    console.error(`NeonDB Connection Error: ${error.message}`);
-    process.exit(1);
+  } finally {
+    client.release();
   }
 };
 

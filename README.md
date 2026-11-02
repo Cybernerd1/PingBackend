@@ -89,10 +89,11 @@ npm install
 
 ### 2. Database Migration
 
-Generate Drizzle schema files and apply migrations to your NeonDB PostgreSQL database:
+Apply the checked-in migrations to your NeonDB PostgreSQL database. Generate a
+new migration only when you intentionally change the Drizzle schema:
 
 ```bash
-# Generate SQL migration files
+# After changing a schema: generate and review SQL migration files
 npm run db:generate
 
 # Execute migration scripts against PostgreSQL
@@ -109,6 +110,47 @@ npm run dev
 ```
 
 The server will start at `http://localhost:5000`.
+
+### 4. Deployment (Render)
+
+- Build command: `npm ci`
+- Start command: `node server.js` (or `npm start`)
+- Set `NODE_ENV=production`, `DATABASE_URL`, and the other secrets in Render's environment.
+
+Server startup applies pending checked-in migrations **before** opening the HTTP
+port, initializing Socket.IO, or scheduling the purge job. If a migration fails,
+startup exits with an error instead of serving requests against an outdated
+schema. Concurrent starts are serialized with a PostgreSQL advisory lock.
+The database role must have permission to apply schema changes.
+
+For the login error `column "session_version" does not exist`, migration
+`0008_password_auth` adds both `users.session_version` (integer, not null, default
+`0`) and the `create_password` onboarding enum value. Redeploy this version, or
+run `npm run db:migrate` from `pingbckd` in the deployed environment using the
+**same DATABASE_URL as the API**, then restart it. Confirm the log shows
+`Database migrations completed` and retry Google/password sign-in.
+
+Back up production before applying migrations. Do not use `db:push` as a
+production deployment step. If an existing database was created with `db:push`
+or manual SQL and has no matching Drizzle migration history, reconcile that
+history with the actual schema first; do not drop tables or mark unapplied
+migrations as complete to bypass an error.
+
+An expired/invalid access or refresh token should still return `401`; sign in
+again when refresh is rejected. `304` is a normal conditional GET response,
+not a server failure. The API answers browser favicon requests with `204`.
+
+### 5. Local regression checks
+
+```bash
+npm test
+```
+
+These isolated tests cover migration ordering/restarts/failure handling, startup
+gating, and HTTP health/favicon/auth rejection behavior without using `.env` or a
+live database. They use Node's test module mocks (Node 22.3+). The existing
+`test:e2e` and `test:admin` suites require a dedicated, disposable PostgreSQL
+database and a running local API; never point those suites at production.
 
 ---
 

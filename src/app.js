@@ -88,6 +88,9 @@ app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 
 // ─── Root & Health ────────────────────────────────────────────────────
+// Browsers request this automatically; the API has no favicon to serve.
+app.get('/favicon.ico', (_req, res) => res.status(204).end());
+
 app.get('/', (_req, res) => {
   res.status(200).json({
     status: 'success',
