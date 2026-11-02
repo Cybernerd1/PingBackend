@@ -16,8 +16,8 @@ const ADMIN_REFRESH_EXPIRES_IN  = process.env.JWT_ADMIN_REFRESH_EXPIRES_IN  || '
 
 // ── Regular app tokens ──────────────────────────────────────────────────
 
-export const generateAccessToken = (userId) =>
-  jwt.sign({ userId, aud: 'app' }, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
+export const generateAccessToken = (userId, sessionVersion = 0) =>
+  jwt.sign({ userId, sessionVersion, aud: 'app' }, ACCESS_SECRET, { expiresIn: ACCESS_EXPIRES_IN });
 
 export const generateRefreshToken = (userId) =>
   jwt.sign({ userId, aud: 'app' }, REFRESH_SECRET, { expiresIn: REFRESH_EXPIRES_IN });

@@ -20,7 +20,7 @@ export const MIN_PHOTOS = 1;
 export const computeOnboarding = async (userId) => {
   const [[user], [ic], [pc], [pref]] = await Promise.all([
     db
-      .select({ fullName: users.fullName, birthdate: users.birthdate, gender: users.gender })
+      .select({ fullName: users.fullName, birthdate: users.birthdate, gender: users.gender, password: users.password })
       .from(users)
       .where(eq(users.id, userId)),
     db.select({ n: count() }).from(userInterests).where(eq(userInterests.userId, userId)),
@@ -35,6 +35,7 @@ export const computeOnboarding = async (userId) => {
   else if (Number(ic?.n ?? 0) < MIN_INTERESTS) step = 'interests';
   else if (Number(pc?.n ?? 0) < MIN_PHOTOS) step = 'photos';
   else if (!pref) step = 'preferences';
+  else if (!user.password) step = 'create_password';
 
   return { step, completed: step === 'completed' };
 };

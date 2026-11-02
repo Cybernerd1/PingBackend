@@ -79,7 +79,7 @@ export const createProfile = async (req, res, next) => {
 // ── GET /api/v1/users/profile (own) ──────────────────────────────────
 export const getMyProfile = async (req, res, next) => {
   try {
-    const user = await userRepository.findById(req.user.id, { withPhotos: true });
+    const user = await userRepository.findById(req.user.id, { withPhotos: true, withSensitive: true });
     if (!user) return R.notFound(res, 'Profile not found');
 
     const interests = await interestRepository.findByUserId(req.user.id);
@@ -106,6 +106,7 @@ export const getMyProfile = async (req, res, next) => {
         })),
         onboarding_step: status.step,
         onboarding_completed: status.completed,
+        hasPassword: !!user.password,
         is_demo: !!user.isDemo,
         created_at: user.createdAt,
       },

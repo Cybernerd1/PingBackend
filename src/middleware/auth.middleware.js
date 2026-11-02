@@ -50,6 +50,8 @@ export const protect = async (req, res, next) => {
     // Ban check: reject banned users immediately (DB-driven, not JWT-claim-driven)
     if (user.isBanned)
       return R.forbidden(res, 'Your account has been suspended');
+    if ((decoded.sessionVersion ?? 0) !== (user.sessionVersion ?? 0))
+      return R.unauthorized(res, 'This session has been invalidated — please sign in again');
 
     req.user = user;
 

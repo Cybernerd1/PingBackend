@@ -7,12 +7,15 @@ import {
   verifyLoginOtp,
   resendLoginOtp,
   loginWithPassword,
+  setPassword,
+  changePassword,
   googleCallback,
   appleCallback,
   refreshToken,
   logout,
 } from '../controllers/auth.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
+import { passwordRateLimiter } from '../middleware/rateLimiter.middleware.js';
 
 const router = Router();
 
@@ -190,8 +193,8 @@ router.post('/login/resend-otp', resendLoginOtp);
  * @swagger
  * /v1/auth/login/password:
  *   post:
- *     summary: Email + password sign-in (demo / test account)
- *     description: Demo account is demo@ping.app / Demo@1234. Signing in as the demo user puts unmatched sample profiles back in its deck.
+  *     summary: Email + password sign-in
+  *     description: Accounts with a password can sign in with email and password. The demo account is demo@ping.app / Demo@1234.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -210,6 +213,9 @@ router.post('/login/resend-otp', resendLoginOtp);
  *         description: Incorrect email or password
  */
 router.post('/login/password', loginWithPassword);
+
+router.post('/password', passwordRateLimiter, protect, setPassword);
+router.put('/password', passwordRateLimiter, protect, changePassword);
 
 // ── OAuth ──────────────────────────────────────────────────────────────
 

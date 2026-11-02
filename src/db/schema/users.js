@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   boolean,
+  integer,
   doublePrecision,
   timestamp,
   pgEnum,
@@ -28,6 +29,7 @@ export const onboardingStepEnum = pgEnum('onboarding_step', [
   'interests',
   'photos',
   'preferences',
+  'create_password',
   'completed',
 ]);
 
@@ -45,6 +47,7 @@ export const users = pgTable(
     phone: varchar('phone', { length: 30 }),
     password: varchar('password', { length: 255 }),
     refreshToken: text('refresh_token'),
+    sessionVersion: integer('session_version').default(0).notNull(),
     isEmailVerified: boolean('is_email_verified').default(false).notNull(),
 
     // ── Profile ────────────────────────────────────────────────────────

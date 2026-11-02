@@ -28,7 +28,7 @@ import { sql } from 'drizzle-orm';
 
 // ── Helper: issue tokens & send response ──────────────────────────────
 const sendTokens = async (res, user, statusCode = 200, extra = {}) => {
-  const accessToken = generateAccessToken(user.id);
+  const accessToken = generateAccessToken(user.id, user.sessionVersion ?? 0);
   const refreshToken = generateRefreshToken(user.id);
   await userRepository.updateRefreshToken(user.id, refreshToken);
 
@@ -187,8 +187,8 @@ const refreshDemoDeck = async (demoId) => {
 };
 
 // ── Email + password: POST /api/v1/auth/login/password ───────────────
-// Used by the shared demo/test account (demo@ping.app). Any account with a
-// password hash can sign in this way; Google-only accounts have none.
+// Any account with a password hash can sign in this way; Google-only accounts
+// can add one later from onboarding or Settings.
 export const loginWithPassword = async (req, res, next) => {
   try {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
@@ -213,6 +213,69 @@ export const loginWithPassword = async (req, res, next) => {
   }
 };
 
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
+
+const validatePassword = (password) => {
+  if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH)
+    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+  if (password.length > PASSWORD_MAX_LENGTH)
+    return `Password must be no more than ${PASSWORD_MAX_LENGTH} characters`;
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password))
+    return 'Password must include an uppercase letter, lowercase letter, and number';
+  return null;
+};
+
+const rotateSessionAfterPasswordChange = async (user, password) => {
+  const updated = await userRepository.update(user.id, {
+    password,
+    sessionVersion: (user.sessionVersion ?? 0) + 1,
+  });
+  return updated;
+};
+
+// ── Set password: POST /api/v1/auth/password ───────────────────────────
+export const setPassword = async (req, res, next) => {
+  try {
+    const password = req.body?.password;
+    const validation = validatePassword(password);
+    if (validation) return R.validationError(res, validation);
+
+    const user = await userRepository.findById(req.user.id, { withSensitive: true });
+    if (user.password) return R.conflict(res, 'A password is already set');
+
+    const hashed = await bcrypt.hash(password, 12);
+    const updated = await rotateSessionAfterPasswordChange(user, hashed);
+    return sendTokens(res, updated, 200, { hasPassword: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── Change password: PUT /api/v1/auth/password ─────────────────────────
+export const changePassword = async (req, res, next) => {
+  try {
+    const currentPassword = req.body?.current_password;
+    const newPassword = req.body?.new_password;
+    const validation = validatePassword(newPassword);
+    if (validation) return R.validationError(res, validation);
+    if (typeof currentPassword !== 'string' || !currentPassword)
+      return R.validationError(res, 'current_password is required');
+
+    const user = await userRepository.findById(req.user.id, { withSensitive: true });
+    if (!user.password || !(await bcrypt.compare(currentPassword, user.password)))
+      return R.unauthorized(res, 'Current password is incorrect');
+    if (currentPassword === newPassword)
+      return R.validationError(res, 'New password must be different from the current password');
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    const updated = await rotateSessionAfterPasswordChange(user, hashed);
+    return sendTokens(res, updated, 200, { hasPassword: true });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ── Google OAuth: POST /api/v1/auth/google/callback ──────────────────
 export const googleCallback = async (req, res, next) => {
   try {
@@ -228,6 +291,8 @@ export const googleCallback = async (req, res, next) => {
     }
 
     const { sub: googleId, email, name, picture: googleAvatar, email_verified } = payload;
+
+    if (!email_verified) return R.unauthorized(res, 'Google email must be verified before linking');
 
     let user = await userRepository.findByGoogleId(googleId);
     let profileExists = false;
@@ -297,7 +362,7 @@ export const refreshToken = async (req, res, next) => {
     if (refreshUser.isBanned)
       return R.forbidden(res, 'Your account has been suspended');
 
-    const newAccessToken = generateAccessToken(decoded.userId);
+    const newAccessToken = generateAccessToken(decoded.userId, refreshUser.sessionVersion ?? 0);
     const newRefreshToken = generateRefreshToken(decoded.userId);
     await userRepository.updateRefreshToken(decoded.userId, newRefreshToken);
 

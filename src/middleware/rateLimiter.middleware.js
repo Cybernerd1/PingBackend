@@ -88,6 +88,12 @@ export const tokenRateLimiter = makeRateLimiter(15 * 60 * 1000, 60, {
   message: 'Too many sign-in attempts — please wait a few minutes and try again',
 });
 
+// 5 password mutations per 15 minutes per signed-in user.
+export const passwordRateLimiter = makeRateLimiter(15 * 60 * 1000, 5, {
+  ...rateLimitError,
+  message: 'Too many password changes — please wait before trying again',
+});
+
 // 30 requests per minute — discover stack
 export const discoverRateLimiter = makeRateLimiter(60 * 1000, 30, {
   ...rateLimitError,
